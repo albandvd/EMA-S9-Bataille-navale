@@ -14,6 +14,9 @@ public sealed class FakeGameApiClient : IGameApiClient
 
     public Task<CreateGameResponse> CreateGameAsync(CreateGameRequest request, CancellationToken ct)
     {
+        _shotCounter = 0;
+        _hitCounter = 0;
+
         var gameId = Guid.NewGuid();
         var playerId = Guid.NewGuid();
         var opponentId = Guid.NewGuid();
@@ -108,6 +111,14 @@ public sealed class FakeGameApiClient : IGameApiClient
     {
         EnsureGame(gameId);
 
+        if (_game!.Status != GameStatus.InProgress)
+        {
+            throw new GameApiException(new ApiProblemDto(
+                "about:blank", "Partie terminée", 409,
+                "Cette partie est déjà terminée, aucun tir ne peut plus être joué.",
+                ErrorCodes.GameNotInProgress, null));
+        }
+
         _shotCounter++;
         var outcome = _shotCounter % 3 == 0 ? ShotOutcome.Hit : ShotOutcome.Miss;
         var symbol = outcome == ShotOutcome.Hit ? 'x' : 'o';
@@ -160,6 +171,38 @@ public sealed class FakeGameApiClient : IGameApiClient
 
     public Task<IReadOnlyList<PowerDefinitionDto>> GetPowerCatalogAsync(CancellationToken ct) =>
         Task.FromResult(Catalog);
+
+    private static readonly IReadOnlyDictionary<string, FleetPresetDto> FleetPresets =
+        new Dictionary<string, FleetPresetDto>
+        {
+            ["Classic"] = new FleetPresetDto("Classic", "Flotte complète à cinq navires.",
+                [
+                    new FleetShipDto(ShipType.Carrier, 5, 1),
+                    new FleetShipDto(ShipType.Battleship, 4, 1),
+                    new FleetShipDto(ShipType.Cruiser, 3, 1),
+                    new FleetShipDto(ShipType.Submarine, 3, 1),
+                    new FleetShipDto(ShipType.Destroyer, 2, 1)
+                ], 8),
+            ["Skirmish"] = new FleetPresetDto("Skirmish", "Flotte réduite à trois navires, pour une partie rapide.",
+                [
+                    new FleetShipDto(ShipType.Cruiser, 3, 1),
+                    new FleetShipDto(ShipType.Submarine, 3, 1),
+                    new FleetShipDto(ShipType.Destroyer, 2, 1)
+                ], 8)
+        };
+
+    public Task<FleetPresetDto> GetFleetPresetAsync(string presetName, CancellationToken ct)
+    {
+        if (!FleetPresets.TryGetValue(presetName, out var preset))
+        {
+            throw new GameApiException(new ApiProblemDto(
+                "about:blank", "Preset introuvable", 404,
+                $"Aucun preset de flotte nommé « {presetName} ».",
+                ErrorCodes.GameNotFound, null));
+        }
+
+        return Task.FromResult(preset);
+    }
 
     private static int ShipSize(ShipType type) => type switch
     {

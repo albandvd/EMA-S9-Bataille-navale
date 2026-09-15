@@ -15,9 +15,9 @@
     <BottomScreen>
         <DsBottomScreen>
             <DsErrorBanner Problem="Store.LastError" />
-            @if (Store.CurrentGame is { } current)
+            @if (Store.CurrentGame is not null)
             {
-                <ShipTray @ref="_shipTray" Fleet="current.Self.Fleet" OnShipPlaced="HandleShipPlaced" />
+                <ShipTray @ref="_shipTray" Fleet="_fleetToPlace" OnShipPlaced="HandleShipPlaced" />
             }
             <DsButton Label="Valider la flotte" OnClick="ConfirmFleet" />
         </DsBottomScreen>
@@ -27,6 +27,7 @@
 @code {
     private ShipTray? _shipTray;
     private readonly List<ShipPlacementDto> _placements = [];
+    private IReadOnlyList<ShipStateDto> _fleetToPlace = [];
 
     protected override void OnInitialized()
     {
@@ -34,7 +35,35 @@
         if (Store.CurrentGame is null)
         {
             Navigation.NavigateTo("/lobby");
+            return;
         }
+
+        _fleetToPlace = BuildFleetToPlace();
+    }
+
+    /// <summary>
+    /// Étend le preset de flotte (un navire par type avec un décompte) en une liste plate de
+    /// navires encore à placer, pour satisfaire le paramètre Fleet de ShipTray sans lui faire
+    /// connaître la notion de preset.
+    /// </summary>
+    private IReadOnlyList<ShipStateDto> BuildFleetToPlace()
+    {
+        if (Store.FleetPreset is not { } preset)
+        {
+            return [];
+        }
+
+        var ships = new List<ShipStateDto>();
+        foreach (var shipDefinition in preset.Ships)
+        {
+            for (var i = 0; i < shipDefinition.Count; i++)
+            {
+                ships.Add(new ShipStateDto($"{shipDefinition.Type}-{i}", shipDefinition.Type,
+                    shipDefinition.Size, 0, false, null));
+            }
+        }
+
+        return ships;
     }
 
     private Task HandleCellClicked(CoordinateDto coordinate) =>

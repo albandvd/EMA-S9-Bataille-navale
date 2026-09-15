@@ -17,4 +17,5 @@ public sealed class GameApiClient : IGameApiClient
     public Task<PowerResultDto> UsePowerAsync(Guid gameId, string playerToken, UsePowerRequest request, CancellationToken ct) => throw new NotImplementedException();
     public Task<GameStateDto> ForfeitAsync(Guid gameId, string playerToken, CancellationToken ct) => throw new NotImplementedException();
     public Task<IReadOnlyList<PowerDefinitionDto>> GetPowerCatalogAsync(CancellationToken ct) => throw new NotImplementedException();
+    public Task<FleetPresetDto> GetFleetPresetAsync(string presetName, CancellationToken ct) => throw new NotImplementedException();
 }

@@ -47,6 +47,7 @@
 
         if (Store.CurrentGame is not null)
         {
+            await Store.LoadFleetPresetAsync(_fleetPreset);
             Navigation.NavigateTo("/deploy");
         }
     }

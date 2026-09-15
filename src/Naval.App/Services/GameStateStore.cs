@@ -17,10 +17,18 @@ public sealed class GameStateStore(IGameApiClient api)
 
     public IReadOnlyList<OpenGameDto> OpenGames { get; private set; } = [];
     public IReadOnlyList<PowerDefinitionDto> PowerCatalog { get; private set; } = [];
+    public FleetPresetDto? FleetPreset { get; private set; }
 
     public Task CreateGameAsync(CreateGameRequest request) => RunAsync(async () =>
     {
         var response = await api.CreateGameAsync(request, CancellationToken.None);
+        _playerToken = response.PlayerToken;
+        CurrentGame = await api.GetGameAsync(response.GameId, response.PlayerToken, CancellationToken.None);
+    });
+
+    public Task JoinGameAsync(JoinGameRequest request) => RunAsync(async () =>
+    {
+        var response = await api.JoinGameAsync(request, CancellationToken.None);
         _playerToken = response.PlayerToken;
         CurrentGame = await api.GetGameAsync(response.GameId, response.PlayerToken, CancellationToken.None);
     });
@@ -33,6 +41,11 @@ public sealed class GameStateStore(IGameApiClient api)
     public Task LoadPowerCatalogAsync() => RunAsync(async () =>
     {
         PowerCatalog = await api.GetPowerCatalogAsync(CancellationToken.None);
+    });
+
+    public Task LoadFleetPresetAsync(string presetName) => RunAsync(async () =>
+    {
+        FleetPreset = await api.GetFleetPresetAsync(presetName, CancellationToken.None);
     });
 
     public Task PlaceFleetAsync(PlaceFleetRequest request) => RunAsync(async () =>
