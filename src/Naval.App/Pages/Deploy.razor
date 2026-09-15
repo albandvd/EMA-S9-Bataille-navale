@@ -1,0 +1,57 @@
+@page "/deploy"
+@inject GameStateStore Store
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<DsConsole>
+    <TopScreen>
+        <DsTopScreen>
+            @if (Store.CurrentGame is { } game)
+            {
+                <GridView Board="game.Self.Board" OnCellClicked="HandleCellClicked" />
+            }
+        </DsTopScreen>
+    </TopScreen>
+    <BottomScreen>
+        <DsBottomScreen>
+            <DsErrorBanner Problem="Store.LastError" />
+            @if (Store.CurrentGame is { } current)
+            {
+                <ShipTray @ref="_shipTray" Fleet="current.Self.Fleet" OnShipPlaced="HandleShipPlaced" />
+            }
+            <DsButton Label="Valider la flotte" OnClick="ConfirmFleet" />
+        </DsBottomScreen>
+    </BottomScreen>
+</DsConsole>
+
+@code {
+    private ShipTray? _shipTray;
+    private readonly List<ShipPlacementDto> _placements = [];
+
+    protected override void OnInitialized()
+    {
+        Store.StateChanged += OnStoreChanged;
+        if (Store.CurrentGame is null)
+        {
+            Navigation.NavigateTo("/lobby");
+        }
+    }
+
+    private Task HandleCellClicked(CoordinateDto coordinate) =>
+        _shipTray?.PlaceSelectedAtAsync(coordinate) ?? Task.CompletedTask;
+
+    private void HandleShipPlaced(ShipPlacementDto placement) => _placements.Add(placement);
+
+    private async Task ConfirmFleet()
+    {
+        await Store.PlaceFleetAsync(new PlaceFleetRequest(_placements));
+        if (Store.CurrentGame?.Status == GameStatus.InProgress)
+        {
+            Navigation.NavigateTo("/battle");
+        }
+    }
+
+    private void OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Store.StateChanged -= OnStoreChanged;
+}
