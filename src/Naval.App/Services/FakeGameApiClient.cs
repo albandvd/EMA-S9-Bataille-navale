@@ -64,6 +64,14 @@ public sealed class FakeGameApiClient : IGameApiClient
     ];
 
     private int _shotCounter;
+    private int _hitCounter;
+
+    /// <summary>
+    /// Nombre de touches (déterministes, 1 tir sur 3) déclenchant une victoire simulée. Simple
+    /// seuil arbitraire pour permettre d'atteindre l'écran /result en développement ; ne reflète
+    /// aucune règle de jeu réelle (pas de coulage de navires, pas de flotte adverse).
+    /// </summary>
+    private const int HitsToWin = 3;
 
     public Task<JoinGameResponse> JoinGameAsync(JoinGameRequest request, CancellationToken ct) =>
         throw new GameApiException(new ApiProblemDto(
@@ -110,11 +118,28 @@ public sealed class FakeGameApiClient : IGameApiClient
         rows[request.Target.Y] = new string(chars);
 
         var opponent = _game.Opponent with { TargetBoard = _game.Opponent.TargetBoard with { Rows = rows } };
-        _game = _game with { Opponent = opponent, TurnNumber = _game.TurnNumber + 1 };
+
+        if (outcome == ShotOutcome.Hit)
+        {
+            _hitCounter++;
+        }
+
+        var gameOver = _hitCounter >= HitsToWin;
+        var status = gameOver ? GameStatus.Finished : _game.Status;
+        var winnerId = gameOver ? _game.Self.PlayerId : _game.WinnerId;
+
+        _game = _game with
+        {
+            Opponent = opponent,
+            TurnNumber = _game.TurnNumber + 1,
+            Status = status,
+            WinnerId = winnerId
+        };
 
         return Task.FromResult(new ShotResultDto(
             gameId, _game.TurnNumber, _game.Self.PlayerId, request.Target, outcome,
-            null, outcome == ShotOutcome.Hit ? 2 : 0, _game.Self.PlayerId, false, null));
+            null, outcome == ShotOutcome.Hit ? 2 : 0, gameOver ? null : _game.Self.PlayerId,
+            gameOver, winnerId));
     }
 
     public Task<PowerResultDto> UsePowerAsync(Guid gameId, string playerToken, UsePowerRequest request, CancellationToken ct)
