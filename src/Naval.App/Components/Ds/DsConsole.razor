@@ -1,0 +1,10 @@
+<div class="ds-console">
+    <div class="ds-console__hinge"></div>
+    @TopScreen
+    @BottomScreen
+</div>
+
+@code {
+    [Parameter] public RenderFragment? TopScreen { get; set; }
+    [Parameter] public RenderFragment? BottomScreen { get; set; }
+}
