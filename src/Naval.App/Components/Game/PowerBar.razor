@@ -1,0 +1,30 @@
+<div class="power-bar">
+    @foreach (var slot in Powers)
+    {
+        <button class="power-bar__slot power-bar__slot--@slot.Status.ToString().ToLowerInvariant()"
+                disabled="@(!slot.CanAffordNow || slot.Status != PowerSlotStatus.Ready)"
+                @onclick="() => Activate(slot.PowerId)">
+            <span>@slot.PowerId</span>
+            @if (slot.Status == PowerSlotStatus.Charging)
+            {
+                <span>Charge : @slot.ChargeRemaining</span>
+            }
+            @if (slot.CooldownRemaining > 0)
+            {
+                <span>CD : @slot.CooldownRemaining</span>
+            }
+            @if (slot.UsesLeft >= 0)
+            {
+                <span>x@slot.UsesLeft</span>
+            }
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<PowerSlotDto> Powers { get; set; } = [];
+    [Parameter] public EventCallback<PowerId> OnPowerActivated { get; set; }
+
+    private Task Activate(PowerId id) =>
+        OnPowerActivated.HasDelegate ? OnPowerActivated.InvokeAsync(id) : Task.CompletedTask;
+}

@@ -1,0 +1,13 @@
+<ul class="event-log">
+    @foreach (var evt in Events.OrderByDescending(e => e.Sequence))
+    {
+        <li class="event-log__entry">
+            <span class="event-log__time">@evt.AtUtc.ToLocalTime().ToString("HH:mm:ss")</span>
+            <span class="event-log__message">@evt.Message</span>
+        </li>
+    }
+</ul>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<GameEventDto> Events { get; set; } = [];
+}
