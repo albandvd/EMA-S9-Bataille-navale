@@ -1,0 +1,11 @@
+## .NET
+bin/
+obj/
+*.user
+
+## Worktrees (scratch, native tooling)
+.worktrees/
+.claude/worktrees/
+
+## OS
+.DS_Store
