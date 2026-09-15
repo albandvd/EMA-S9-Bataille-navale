@@ -1,0 +1,57 @@
+@page "/lobby"
+@inject GameStateStore Store
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<DsConsole>
+    <TopScreen>
+        <DsTopScreen>
+            <h2>Configurer la partie</h2>
+            <DsErrorBanner Problem="Store.LastError" />
+        </DsTopScreen>
+    </TopScreen>
+    <BottomScreen>
+        <DsBottomScreen>
+            <label>
+                Pseudo
+                <input @bind="_playerName" />
+            </label>
+            <label>
+                Taille de grille
+                <input type="number" @bind="_gridSize" min="8" max="16" />
+            </label>
+            <label>
+                Flotte
+                <select @bind="_fleetPreset">
+                    <option value="Classic">Classic</option>
+                    <option value="Skirmish">Skirmish</option>
+                </select>
+            </label>
+            <DsButton Label="Démarrer" OnClick="StartGame" />
+        </DsBottomScreen>
+    </BottomScreen>
+</DsConsole>
+
+@code {
+    private string _playerName = "Joueur";
+    private int _gridSize = 10;
+    private string _fleetPreset = "Classic";
+
+    protected override void OnInitialized() => Store.StateChanged += OnStoreChanged;
+
+    private async Task StartGame()
+    {
+        var request = new CreateGameRequest(_playerName, GameMode.SinglePlayer, _gridSize, _gridSize,
+            _fleetPreset, AiLevel.Random, [], 0, null);
+        await Store.CreateGameAsync(request);
+
+        if (Store.CurrentGame is not null)
+        {
+            Navigation.NavigateTo("/deploy");
+        }
+    }
+
+    private void OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Store.StateChanged -= OnStoreChanged;
+}
