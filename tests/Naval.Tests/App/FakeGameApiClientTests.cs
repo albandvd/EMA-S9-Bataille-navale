@@ -43,6 +43,36 @@ public class FakeGameApiClientTests
     }
 
     [Fact]
+    public async Task FireAsync_marks_the_game_finished_once_the_hit_threshold_is_reached()
+    {
+        var client = new FakeGameApiClient();
+        var createRequest = new CreateGameRequest("Joueur", GameMode.SinglePlayer, 5, 5, "Skirmish", AiLevel.Random, [], 0, null);
+        var response = await client.CreateGameAsync(createRequest, CancellationToken.None);
+        await client.PlaceFleetAsync(response.GameId, response.PlayerToken,
+            new PlaceFleetRequest([new ShipPlacementDto(ShipType.Destroyer, new CoordinateDto(0, 0), Orientation.Horizontal)]),
+            CancellationToken.None);
+
+        // Le fake résout un coup sur trois en touché (_shotCounter % 3 == 0) : il faut donc 9
+        // tirs distincts pour accumuler les 3 touchés qui déclenchent la victoire simulée.
+        var targets = Enumerable.Range(0, 9).Select(i => new CoordinateDto(i % 5, i / 5)).ToList();
+
+        ShotResultDto? lastResult = null;
+        foreach (var target in targets)
+        {
+            lastResult = await client.FireAsync(response.GameId, response.PlayerToken,
+                new FireRequest(target), CancellationToken.None);
+        }
+
+        var game = await client.GetGameAsync(response.GameId, response.PlayerToken, CancellationToken.None);
+
+        game.Status.Should().Be(GameStatus.Finished);
+        game.WinnerId.Should().Be(game.Self.PlayerId);
+        lastResult.Should().NotBeNull();
+        lastResult!.GameOver.Should().BeTrue();
+        lastResult.WinnerId.Should().Be(game.Self.PlayerId);
+    }
+
+    [Fact]
     public async Task GetPowerCatalogAsync_returns_unique_power_definitions()
     {
         var client = new FakeGameApiClient();
