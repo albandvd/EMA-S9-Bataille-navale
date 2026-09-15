@@ -1,0 +1,20 @@
+<div class="grid-view" style="grid-template-columns: repeat(@Board.Width, 1fr);">
+    @for (var y = 0; y < Board.Rows.Count; y++)
+    {
+        var row = Board.Rows[y];
+        for (var x = 0; x < row.Length; x++)
+        {
+            var coordinate = new CoordinateDto(x, y);
+            var state = row[x];
+            <GridCell State="state" OnClick="() => HandleCellClicked(coordinate)" />
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public BoardViewDto Board { get; set; } = null!;
+    [Parameter] public EventCallback<CoordinateDto> OnCellClicked { get; set; }
+
+    private Task HandleCellClicked(CoordinateDto coordinate) =>
+        OnCellClicked.HasDelegate ? OnCellClicked.InvokeAsync(coordinate) : Task.CompletedTask;
+}
