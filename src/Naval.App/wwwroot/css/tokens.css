@@ -1,0 +1,22 @@
+:root {
+  --sea-deep:     #0b2545;
+  --sea:          #13315c;
+  --sea-light:    #1c4c7c;
+  --hull:         #8d99ae;
+  --hull-dark:    #5c677d;
+  --hit:          #ef233c;
+  --sunk:         #6a040f;
+  --miss:         #adb5bd;
+  --energy:       #ffd166;
+  --charge:       #06d6a0;
+  --shell:        #2b2d42;
+  --shell-light:  #3d405b;
+  --screen-glow:  #8ecae6;
+  --text:         #edf2f4;
+}
+
+body {
+  background: var(--shell);
+  color: var(--text);
+  font-family: 'Silkscreen', 'VT323', monospace;
+}
