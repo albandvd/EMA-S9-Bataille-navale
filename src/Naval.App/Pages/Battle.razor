@@ -1,0 +1,55 @@
+@page "/battle"
+@inject GameStateStore Store
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<DsConsole>
+    <TopScreen>
+        <DsTopScreen>
+            @if (Store.CurrentGame is { } game)
+            {
+                <GridView Board="game.Opponent.TargetBoard" OnCellClicked="HandleFire" />
+            }
+        </DsTopScreen>
+    </TopScreen>
+    <BottomScreen>
+        <DsBottomScreen>
+            <DsErrorBanner Problem="Store.LastError" />
+            @if (Store.CurrentGame is { } current)
+            {
+                <GridView Board="current.Self.Board" />
+                <EnergyGauge Energy="current.Self.Energy" />
+                <ChargeMeter Charge="current.Opponent.Charge" />
+                <PowerBar Powers="current.Self.Powers" OnPowerActivated="HandlePower" />
+                <EventLog Events="current.RecentEvents" />
+            }
+        </DsBottomScreen>
+    </BottomScreen>
+</DsConsole>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Store.StateChanged += OnStoreChanged;
+        if (Store.CurrentGame is null)
+        {
+            Navigation.NavigateTo("/lobby");
+        }
+    }
+
+    private async Task HandleFire(CoordinateDto target)
+    {
+        await Store.FireAsync(target);
+        if (Store.CurrentGame?.Status == GameStatus.Finished)
+        {
+            Navigation.NavigateTo("/result");
+        }
+    }
+
+    private Task HandlePower(PowerId id) =>
+        Store.UsePowerAsync(id, new PowerTargetDto(null, null, null, null, null));
+
+    private void OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Store.StateChanged -= OnStoreChanged;
+}
