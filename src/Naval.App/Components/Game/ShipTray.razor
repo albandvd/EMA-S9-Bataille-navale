@@ -1,0 +1,37 @@
+<div class="ship-tray">
+    @foreach (var ship in Fleet)
+    {
+        <div class="ship-tray__item @(ship == _selected ? "ship-tray__item--selected" : "")"
+             @onclick="() => Select(ship)">
+            @ship.Type (@ship.Size)
+        </div>
+    }
+    <button class="ship-tray__rotate" @onclick="ToggleOrientation">
+        Orientation : @_orientation
+    </button>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<ShipStateDto> Fleet { get; set; } = [];
+    [Parameter] public EventCallback<ShipPlacementDto> OnShipPlaced { get; set; }
+
+    private ShipStateDto? _selected;
+    private Orientation _orientation = Orientation.Horizontal;
+
+    private void Select(ShipStateDto ship) => _selected = ship;
+
+    private void ToggleOrientation() =>
+        _orientation = _orientation == Orientation.Horizontal ? Orientation.Vertical : Orientation.Horizontal;
+
+    public Task PlaceSelectedAtAsync(CoordinateDto origin)
+    {
+        if (_selected is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var placement = new ShipPlacementDto(_selected.Type, origin, _orientation);
+        _selected = null;
+        return OnShipPlaced.HasDelegate ? OnShipPlaced.InvokeAsync(placement) : Task.CompletedTask;
+    }
+}
