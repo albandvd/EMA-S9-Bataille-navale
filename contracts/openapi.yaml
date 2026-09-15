@@ -1,0 +1,1008 @@
+openapi: 3.0.3
+
+# Source de vérité du contrat HTTP.
+# Toute modification ici se répercute dans src/Naval.Shared/Contracts, et inversement.
+# Le temps réel (SignalR) n'est pas décrit par OpenAPI : voir docs/03-architecture.md §4.
+
+info:
+  title: Bataille Navale — API
+  version: 1.0.0
+  description: |
+    API d'une bataille navale à pouvoirs, jouable en solo contre l'IA ou en ligne à deux.
+
+    **Serveur autoritaire.** Aucune réponse ne contient la position d'un navire adverse non
+    découvert. Les grilles sont encodées en lignes de caractères (voir le schéma `BoardView`).
+
+    **Identification.** `POST /games` et `POST /games/join` renvoient un `playerToken` opaque.
+    Il doit accompagner toute requête suivante dans l'en-tête `X-Player-Token`, et la
+    négociation SignalR dans la query string `?token=`. Ce n'est pas un mécanisme de sécurité
+    mais d'identification de session.
+
+servers:
+  - url: https://localhost:7001
+    description: Développement local
+
+security:
+  - PlayerToken: []
+
+tags:
+  - name: Games
+    description: Cycle de vie des parties
+  - name: Fleet
+    description: Déploiement de la flotte
+  - name: Play
+    description: Tirs et pouvoirs
+  - name: Catalog
+    description: Données statiques (flottes, pouvoirs)
+  - name: System
+
+paths:
+
+  # ─────────────────────────────── Games ───────────────────────────────
+
+  /api/games:
+    post:
+      tags: [Games]
+      summary: Crée une partie
+      description: |
+        L'appelant devient le joueur 1. En mode `SinglePlayer`, l'IA occupe immédiatement le
+        second emplacement et la partie passe en `AwaitingDeployment`. En mode `PrivateOnline`,
+        un `joinCode` est émis et la partie reste en `AwaitingOpponent`.
+      operationId: createGame
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateGameRequest' }
+      responses:
+        '201':
+          description: Partie créée
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CreateGameResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /api/games/join:
+    post:
+      tags: [Games]
+      summary: Rejoint une partie en attente
+      description: Par `joinCode` (partie privée) ou par `gameId` (partie publique du salon).
+      operationId: joinGame
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JoinGameRequest' }
+      responses:
+        '200':
+          description: Partie rejointe
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JoinGameResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Partie déjà pleine ou démarrée
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ApiProblem' }
+              examples:
+                full:
+                  value: { type: 'about:blank', title: Conflit, status: 409, detail: Cette partie a déjà deux joueurs., code: GAME_FULL }
+
+  /api/games/open:
+    get:
+      tags: [Games]
+      summary: Liste les parties publiques en attente
+      operationId: listOpenGames
+      security: []
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        '200':
+          description: Salon
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/OpenGame' }
+
+  /api/games/{gameId}:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    get:
+      tags: [Games]
+      summary: Récupère l'état de la partie, filtré pour l'appelant
+      description: |
+        Point d'entrée de la reprise après rafraîchissement ou déconnexion. La réponse est
+        construite pour le porteur du `X-Player-Token` : un autre joueur obtient une réponse
+        différente pour la même partie.
+      operationId: getGame
+      responses:
+        '200':
+          description: État de la partie
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GameState' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/games/{gameId}/forfeit:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    post:
+      tags: [Games]
+      summary: Abandonne la partie
+      operationId: forfeitGame
+      responses:
+        '200':
+          description: Partie terminée par abandon
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GameOver' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/games/{gameId}/events:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    get:
+      tags: [Games]
+      summary: Flux d'événements depuis un curseur
+      description: |
+        Sert au rattrapage après reconnexion et au rejeu d'une partie terminée. C'est aussi
+        le repli fonctionnel si SignalR est indisponible sur le réseau de démonstration.
+      operationId: getEvents
+      parameters:
+        - name: since
+          in: query
+          description: Dernier `sequence` déjà reçu. 0 pour tout l'historique.
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Événements filtrés pour l'appelant
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/GameEvent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ─────────────────────────────── Fleet ───────────────────────────────
+
+  /api/games/{gameId}/fleet:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    post:
+      tags: [Fleet]
+      summary: Soumet la flotte complète
+      description: |
+        Tout ou rien : un seul navire invalide fait rejeter la requête entière, sans
+        placement partiel. Les motifs possibles sont `OUT_OF_BOUNDS`, `OVERLAPPING_SHIPS`
+        et `FLEET_INCOMPLETE`.
+      operationId: placeFleet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PlaceFleetRequest' }
+      responses:
+        '200':
+          description: Flotte acceptée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GameState' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: Placement invalide ou flotte déjà déployée
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ApiProblem' }
+
+  /api/games/{gameId}/fleet/random:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    post:
+      tags: [Fleet]
+      summary: Propose une flotte valide aléatoire
+      description: Ne l'applique pas. Le joueur la soumet ensuite via `POST /fleet`.
+      operationId: suggestRandomFleet
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RandomFleetRequest' }
+      responses:
+        '200':
+          description: Proposition
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ships]
+                properties:
+                  ships:
+                    type: array
+                    items: { $ref: '#/components/schemas/ShipPlacement' }
+
+  /api/games/{gameId}/ready:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    post:
+      tags: [Fleet]
+      summary: Se déclare prêt
+      description: Quand les deux joueurs sont prêts, la partie passe en `InProgress`.
+      operationId: setReady
+      responses:
+        '200':
+          description: État mis à jour
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GameState' }
+        '409':
+          description: Flotte non déployée
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ApiProblem' }
+
+  # ─────────────────────────────── Play ───────────────────────────────
+
+  /api/games/{gameId}/shots:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    post:
+      tags: [Play]
+      summary: Tire sur une case de la grille adverse
+      description: |
+        En mode solo, le tour de l'IA est joué par le serveur immédiatement après, et poussé
+        par SignalR. La réponse à ce POST ne contient que le résultat du tir du joueur.
+      operationId: fire
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FireRequest' }
+      responses:
+        '200':
+          description: Tir résolu
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ShotResult' }
+              examples:
+                sunk:
+                  summary: Navire coulé
+                  value:
+                    gameId: 7f1e4d6c-8b2a-4a91-9e33-2b5c1d7a0f42
+                    turnNumber: 23
+                    shooterId: 2c9e1a44-5d31-4b0e-8f77-11a2b3c4d5e6
+                    target: { x: 4, y: 6 }
+                    outcome: Sunk
+                    sunkShip:
+                      id: op-destroyer-1
+                      type: Destroyer
+                      size: 2
+                      hits: 2
+                      isSunk: true
+                      cells: [{ x: 4, y: 6 }, { x: 5, y: 6 }]
+                    energyGained: 3
+                    nextPlayerId: 8ab71c20-4f5d-4c19-9a02-6d7e8f901234
+                    gameOver: false
+                    winnerId: null
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409':
+          description: Coup illégal — conflit d'état, pas requête malformée
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ApiProblem' }
+              examples:
+                notYourTurn:
+                  value: { type: 'about:blank', title: Conflit, status: 409, detail: Ce n'est pas votre tour., code: NOT_YOUR_TURN }
+                already:
+                  value: { type: 'about:blank', title: Conflit, status: 409, detail: Vous avez déjà tiré sur cette case., code: CELL_ALREADY_TARGETED }
+
+  /api/games/{gameId}/powers:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    post:
+      tags: [Play]
+      summary: Active un pouvoir équipé
+      description: |
+        Pour un pouvoir à effet immédiat, la réponse porte le résultat. Pour un pouvoir à
+        charge, elle renvoie `charging: true` avec une charge utile vide ; l'effet arrivera
+        plus tard via l'événement `PowerResolved`.
+      operationId: usePower
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UsePowerRequest' }
+      responses:
+        '200':
+          description: Pouvoir activé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PowerResult' }
+              examples:
+                sonar:
+                  summary: Sonar — décompte seulement, jamais de positions
+                  value:
+                    gameId: 7f1e4d6c-8b2a-4a91-9e33-2b5c1d7a0f42
+                    turnNumber: 12
+                    powerId: Sonar
+                    charging: false
+                    chargeRemaining: 0
+                    energySpent: 3
+                    energyRemaining: 5
+                    revealedCells: []
+                    revealedCount: 4
+                    shots: []
+                    message: Sonar en secteur E5 — 4 cases occupées détectées.
+                    nextPlayerId: 8ab71c20-4f5d-4c19-9a02-6d7e8f901234
+                    gameOver: false
+                    winnerId: null
+                orbital:
+                  summary: Frappe orbitale — début de charge
+                  value:
+                    gameId: 7f1e4d6c-8b2a-4a91-9e33-2b5c1d7a0f42
+                    turnNumber: 14
+                    powerId: OrbitalStrike
+                    charging: true
+                    chargeRemaining: 10
+                    energySpent: 8
+                    energyRemaining: 0
+                    revealedCells: []
+                    revealedCount: null
+                    shots: []
+                    message: Chargement engagé. Porteur désigné. 10 tours restants.
+                    nextPlayerId: 8ab71c20-4f5d-4c19-9a02-6d7e8f901234
+                    gameOver: false
+                    winnerId: null
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: Pouvoir indisponible ou cible invalide
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ApiProblem' }
+              examples:
+                energy:
+                  value: { type: 'about:blank', title: Conflit, status: 409, detail: Énergie insuffisante — 3 requis, 1 disponible., code: INSUFFICIENT_ENERGY }
+                carrier:
+                  value: { type: 'about:blank', title: Conflit, status: 409, detail: Ce pouvoir exige un navire porteur., code: CARRIER_REQUIRED }
+
+  /api/games/{gameId}/powers/cancel:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    post:
+      tags: [Play]
+      summary: Annule une charge en cours
+      description: L'énergie dépensée n'est pas remboursée. Décision d'équilibrage assumée.
+      operationId: cancelCharge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CancelChargeRequest' }
+      responses:
+        '200':
+          description: Charge annulée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GameState' }
+        '409':
+          description: Aucune charge en cours pour ce pouvoir
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ApiProblem' }
+
+  /api/games/{gameId}/emotes:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    post:
+      tags: [Play]
+      summary: Envoie une emote
+      description: Jeu fermé de codes. Pas de texte libre, donc rien à modérer.
+      operationId: sendEmote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendEmoteRequest' }
+      responses:
+        '204': { description: Emote transmise }
+        '429':
+          description: Trop d'emotes — limité à 1 toutes les 3 secondes
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/ApiProblem' }
+
+  # ─────────────────────────────── Catalog ───────────────────────────────
+
+  /api/catalog/powers:
+    get:
+      tags: [Catalog]
+      summary: Catalogue des pouvoirs
+      description: |
+        Le front ne code aucun coût ni aucune description en dur : tout vient d'ici. Un
+        rééquilibrage est ainsi un changement purement serveur.
+      operationId: getPowerCatalog
+      security: []
+      responses:
+        '200':
+          description: Pouvoirs disponibles
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PowerDefinition' }
+
+  /api/catalog/power-presets:
+    get:
+      tags: [Catalog]
+      summary: Loadouts pré-composés
+      operationId: getPowerPresets
+      security: []
+      responses:
+        '200':
+          description: Presets
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PowerPreset' }
+
+  /api/catalog/fleets:
+    get:
+      tags: [Catalog]
+      summary: Compositions de flotte disponibles
+      operationId: getFleetPresets
+      security: []
+      responses:
+        '200':
+          description: Presets de flotte
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/FleetPreset' }
+
+  /health:
+    get:
+      tags: [System]
+      summary: Sonde de disponibilité
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: En service
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: Healthy }
+                  activeGames: { type: integer, example: 3 }
+
+# ═══════════════════════════════ Components ═══════════════════════════════
+
+components:
+
+  securitySchemes:
+    PlayerToken:
+      type: apiKey
+      in: header
+      name: X-Player-Token
+      description: |
+        Jeton opaque émis à la création ou à l'adhésion. Identifie la session du joueur et
+        détermine quelle vue filtrée le serveur construit. Ce n'est pas une authentification.
+
+  parameters:
+    GameId:
+      name: gameId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: Requête invalide
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ApiProblem' }
+    Unauthorized:
+      description: En-tête X-Player-Token absent
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ApiProblem' }
+    Forbidden:
+      description: Le jeton ne correspond à aucun joueur de cette partie
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ApiProblem' }
+    NotFound:
+      description: Ressource inconnue
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ApiProblem' }
+
+  schemas:
+
+    # ── Énumérations ──
+    GameMode:        { type: string, enum: [SinglePlayer, PrivateOnline, PublicOnline] }
+    GameStatus:      { type: string, enum: [AwaitingOpponent, AwaitingDeployment, InProgress, Finished, Abandoned] }
+    AiLevel:         { type: string, enum: [Random, HuntTarget, Probability] }
+    Orientation:     { type: string, enum: [Horizontal, Vertical] }
+    ShipType:        { type: string, enum: [Carrier, Battleship, Cruiser, Submarine, Destroyer] }
+    ShotOutcome:     { type: string, enum: [Miss, Hit, Sunk, Rejected] }
+    PlayerSlot:      { type: string, enum: [One, Two] }
+    PowerCategory:   { type: string, enum: [Recon, Offense, Defense, Utility] }
+    PowerSlotStatus: { type: string, enum: [Ready, Charging, Armed, OnCooldown, Exhausted] }
+    TargetKind:      { type: string, enum: [None, Cell, OwnShip, Line, Area] }
+    EmoteCode:       { type: string, enum: [GoodLuck, WellPlayed, Oops, Thinking, Taunt, Sorry, Gg, Hurry] }
+    PowerId:
+      type: string
+      enum:
+        # Reconnaissance
+        - Sonar
+        - TacticalRadar
+        - LineDrone
+        - RadioIntercept
+        - Satellite
+        - WakeAnalysis
+        # Offensif
+        - TripleSalvo
+        - CrossStrike
+        - CarpetBombing
+        - Torpedo
+        - OrbitalStrike
+        - PiercingMissile
+        - NavalMine
+        # Défensif
+        - Decoy
+        - Shield
+        - EmergencyRepair
+        - EvasiveManeuver
+        - Jamming
+        - SmokeScreen
+        # Utilitaire
+        - DoubleTurn
+        - Sabotage
+        - Espionage
+        - ReactorOverload
+
+    # ── Base ──
+    Coordinate:
+      type: object
+      required: [x, y]
+      description: 0-based. x = colonne (0 → A), y = ligne (0 → 1).
+      properties:
+        x: { type: integer, minimum: 0, example: 4 }
+        y: { type: integer, minimum: 0, example: 6 }
+
+    BoardView:
+      type: object
+      required: [width, height, rows]
+      description: |
+        Grille encodée en lignes de caractères, une chaîne par ligne, un caractère par case.
+        Légende commune : `.` inconnu · `o` manqué · `x` touché · `#` coulé · `~` révélé vide ·
+        `?` révélé occupé · `f` masqué par un écran de fumée.
+        Grille propre uniquement : `S` navire intact · `X` navire touché · `D` leurre ·
+        `M` mine · `B` protégé par un bouclier.
+      properties:
+        width:  { type: integer, example: 10 }
+        height: { type: integer, example: 10 }
+        rows:
+          type: array
+          items: { type: string }
+          example: ['..........', '....o.....', '..x#......', '..........']
+
+    # ── Requêtes ──
+    CreateGameRequest:
+      type: object
+      required: [playerName, mode, gridWidth, gridHeight, fleetPreset, powers, turnTimeoutSeconds]
+      properties:
+        playerName:  { type: string, minLength: 2, maxLength: 16, example: Amiral Lea }
+        mode:        { $ref: '#/components/schemas/GameMode' }
+        gridWidth:   { type: integer, minimum: 8, maximum: 16, default: 10 }
+        gridHeight:  { type: integer, minimum: 8, maximum: 16, default: 10 }
+        fleetPreset: { type: string, example: Classic }
+        aiLevel:
+          allOf: [{ $ref: '#/components/schemas/AiLevel' }]
+          nullable: true
+          description: Requis si mode = SinglePlayer, ignoré sinon.
+        powers:
+          type: array
+          maxItems: 3
+          description: Exactement 3 pouvoirs, ou un tableau vide pour désactiver la mécanique.
+          items: { $ref: '#/components/schemas/PowerId' }
+        turnTimeoutSeconds:
+          type: integer
+          description: 0 = pas de limite de temps. Sinon 10 à 120.
+          minimum: 0
+          maximum: 120
+          default: 30
+        seed:
+          type: integer
+          nullable: true
+          description: Graine de génération, pour rejouer une partie à l'identique.
+
+    JoinGameRequest:
+      type: object
+      required: [playerName, powers]
+      description: Fournir `joinCode` (partie privée) ou `gameId` (partie publique), pas les deux.
+      properties:
+        playerName: { type: string, minLength: 2, maxLength: 16 }
+        joinCode:   { type: string, nullable: true, pattern: '^[A-HJ-NP-Z2-9]{6}$', example: K7M4XQ }
+        gameId:     { type: string, format: uuid, nullable: true }
+        powers:
+          type: array
+          maxItems: 3
+          items: { $ref: '#/components/schemas/PowerId' }
+
+    ShipPlacement:
+      type: object
+      required: [type, origin, orientation]
+      properties:
+        type:        { $ref: '#/components/schemas/ShipType' }
+        origin:      { $ref: '#/components/schemas/Coordinate' }
+        orientation: { $ref: '#/components/schemas/Orientation' }
+
+    PlaceFleetRequest:
+      type: object
+      required: [ships]
+      properties:
+        ships:
+          type: array
+          items: { $ref: '#/components/schemas/ShipPlacement' }
+
+    RandomFleetRequest:
+      type: object
+      properties:
+        seed: { type: integer, nullable: true }
+
+    FireRequest:
+      type: object
+      required: [target]
+      properties:
+        target: { $ref: '#/components/schemas/Coordinate' }
+
+    PowerTarget:
+      type: object
+      description: |
+        Seuls les champs correspondant au `targetKind` du pouvoir sont utilisés ; les autres
+        doivent être nuls.
+      properties:
+        cell:          { allOf: [{ $ref: '#/components/schemas/Coordinate' }], nullable: true }
+        shipId:        { type: string, nullable: true }
+        lineIndex:     { type: integer, nullable: true }
+        lineIsRow:     { type: boolean, nullable: true }
+        carrierShipId:
+          type: string
+          nullable: true
+          description: Navire porteur, requis si le pouvoir a chargeTurns ≥ 3.
+
+    UsePowerRequest:
+      type: object
+      required: [powerId, target]
+      properties:
+        powerId: { $ref: '#/components/schemas/PowerId' }
+        target:  { $ref: '#/components/schemas/PowerTarget' }
+
+    CancelChargeRequest:
+      type: object
+      required: [powerId]
+      properties:
+        powerId: { $ref: '#/components/schemas/PowerId' }
+
+    SendEmoteRequest:
+      type: object
+      required: [code]
+      properties:
+        code: { $ref: '#/components/schemas/EmoteCode' }
+
+    # ── Réponses ──
+    CreateGameResponse:
+      type: object
+      required: [gameId, playerToken, status]
+      properties:
+        gameId:      { type: string, format: uuid }
+        playerToken: { type: string, format: uuid }
+        joinCode:    { type: string, nullable: true, example: K7M4XQ }
+        status:      { $ref: '#/components/schemas/GameStatus' }
+
+    JoinGameResponse:
+      type: object
+      required: [gameId, playerToken, status, opponentName]
+      properties:
+        gameId:       { type: string, format: uuid }
+        playerToken:  { type: string, format: uuid }
+        status:       { $ref: '#/components/schemas/GameStatus' }
+        opponentName: { type: string }
+
+    OpenGame:
+      type: object
+      required: [gameId, hostName, gridWidth, gridHeight, fleetPreset, powersEnabled, turnTimeoutSeconds, createdAtUtc]
+      properties:
+        gameId:             { type: string, format: uuid }
+        hostName:           { type: string }
+        gridWidth:          { type: integer }
+        gridHeight:         { type: integer }
+        fleetPreset:        { type: string }
+        powersEnabled:      { type: boolean }
+        turnTimeoutSeconds: { type: integer }
+        createdAtUtc:       { type: string, format: date-time }
+
+    ShipState:
+      type: object
+      required: [id, type, size, hits, isSunk]
+      properties:
+        id:     { type: string, example: own-cruiser-1 }
+        type:   { $ref: '#/components/schemas/ShipType' }
+        size:   { type: integer }
+        hits:   { type: integer }
+        isSunk: { type: boolean }
+        cells:
+          type: array
+          nullable: true
+          description: |
+            Renseigné pour sa propre flotte, ou pour un navire adverse déjà coulé.
+            **Null dans tous les autres cas** — un navire adverse vivant ne révèle jamais ses cases.
+          items: { $ref: '#/components/schemas/Coordinate' }
+
+    PowerDefinition:
+      type: object
+      required: [id, name, category, description, energyCost, chargeTurns, cooldown, maxUses, targetKind, requiresCarrier, iconName]
+      properties:
+        id:              { $ref: '#/components/schemas/PowerId' }
+        name:            { type: string, example: Sonar }
+        category:        { $ref: '#/components/schemas/PowerCategory' }
+        description:     { type: string }
+        energyCost:      { type: integer, example: 3 }
+        chargeTurns:     { type: integer, example: 2, description: Tours pendant lesquels le joueur ne tire pas. }
+        cooldown:        { type: integer, example: 3 }
+        maxUses:         { type: integer, example: -1, description: -1 = illimité. }
+        targetKind:      { $ref: '#/components/schemas/TargetKind' }
+        radius:          { type: integer, nullable: true, example: 4 }
+        requiresCarrier: { type: boolean }
+        iconName:        { type: string, example: sonar }
+
+    PowerSlot:
+      type: object
+      required: [powerId, status, chargeRemaining, cooldownRemaining, usesLeft, canAffordNow]
+      properties:
+        powerId:           { $ref: '#/components/schemas/PowerId' }
+        status:            { $ref: '#/components/schemas/PowerSlotStatus' }
+        chargeRemaining:   { type: integer }
+        cooldownRemaining: { type: integer }
+        usesLeft:          { type: integer }
+        canAffordNow:      { type: boolean }
+
+    OpponentCharge:
+      type: object
+      required: [isCharging]
+      description: |
+        Ce que l'appelant sait de la charge adverse. Le pouvoir n'est identifié que s'il a été
+        révélé — par Espionnage, ou par la révélation automatique de la Frappe orbitale.
+      properties:
+        isCharging:      { type: boolean }
+        revealedPowerId: { allOf: [{ $ref: '#/components/schemas/PowerId' }], nullable: true }
+        turnsRemaining:  { type: integer, nullable: true }
+        revealedColumn:  { type: integer, nullable: true }
+
+    SelfView:
+      type: object
+      required: [playerId, name, slot, energy, board, fleet, powers]
+      properties:
+        playerId: { type: string, format: uuid }
+        name:     { type: string }
+        slot:     { $ref: '#/components/schemas/PlayerSlot' }
+        energy:   { type: integer }
+        board:    { $ref: '#/components/schemas/BoardView' }
+        fleet:
+          type: array
+          items: { $ref: '#/components/schemas/ShipState' }
+        powers:
+          type: array
+          items: { $ref: '#/components/schemas/PowerSlot' }
+
+    OpponentView:
+      type: object
+      required: [playerId, name, isConnected, isAi, energy, shipsRemaining, shipsTotal, targetBoard, sunkShips, charge, equippedPowers]
+      properties:
+        playerId:       { type: string, format: uuid }
+        name:           { type: string }
+        isConnected:    { type: boolean }
+        isAi:           { type: boolean }
+        energy:         { type: integer, description: Publique, pour permettre d'anticiper les pouvoirs. }
+        shipsRemaining: { type: integer }
+        shipsTotal:     { type: integer }
+        targetBoard:
+          allOf: [{ $ref: '#/components/schemas/BoardView' }]
+          description: Grille adverse telle que l'appelant l'a découverte, jamais davantage.
+        sunkShips:
+          type: array
+          items: { $ref: '#/components/schemas/ShipState' }
+        charge: { $ref: '#/components/schemas/OpponentCharge' }
+        equippedPowers:
+          type: array
+          items: { $ref: '#/components/schemas/PowerId' }
+
+    GameState:
+      type: object
+      required: [gameId, mode, status, turnNumber, self, opponent, recentEvents, eventCursor]
+      properties:
+        gameId:          { type: string, format: uuid }
+        mode:            { $ref: '#/components/schemas/GameMode' }
+        status:          { $ref: '#/components/schemas/GameStatus' }
+        joinCode:        { type: string, nullable: true }
+        turnNumber:      { type: integer }
+        currentPlayerId: { type: string, format: uuid, nullable: true }
+        turnDeadlineUtc: { type: string, format: date-time, nullable: true }
+        winnerId:        { type: string, format: uuid, nullable: true }
+        self:            { $ref: '#/components/schemas/SelfView' }
+        opponent:        { $ref: '#/components/schemas/OpponentView' }
+        recentEvents:
+          type: array
+          items: { $ref: '#/components/schemas/GameEvent' }
+        eventCursor:
+          type: integer
+          description: Dernier `sequence` inclus. À passer à GET /events?since= après reconnexion.
+
+    ShotResult:
+      type: object
+      required: [gameId, turnNumber, shooterId, target, outcome, energyGained, gameOver]
+      properties:
+        gameId:       { type: string, format: uuid }
+        turnNumber:   { type: integer }
+        shooterId:    { type: string, format: uuid }
+        target:       { $ref: '#/components/schemas/Coordinate' }
+        outcome:      { $ref: '#/components/schemas/ShotOutcome' }
+        sunkShip:
+          allOf: [{ $ref: '#/components/schemas/ShipState' }]
+          nullable: true
+          description: Renseigné uniquement si outcome = Sunk.
+        energyGained: { type: integer }
+        nextPlayerId: { type: string, format: uuid, nullable: true }
+        gameOver:     { type: boolean }
+        winnerId:     { type: string, format: uuid, nullable: true }
+
+    RevealedCell:
+      type: object
+      required: [cell, occupied]
+      properties:
+        cell:     { $ref: '#/components/schemas/Coordinate' }
+        occupied: { type: boolean }
+
+    PowerResult:
+      type: object
+      required: [gameId, turnNumber, powerId, charging, chargeRemaining, energySpent, energyRemaining, revealedCells, shots, message, gameOver]
+      properties:
+        gameId:          { type: string, format: uuid }
+        turnNumber:      { type: integer }
+        powerId:         { $ref: '#/components/schemas/PowerId' }
+        charging:        { type: boolean }
+        chargeRemaining: { type: integer }
+        energySpent:     { type: integer }
+        energyRemaining: { type: integer }
+        revealedCells:
+          type: array
+          description: |
+            Vide pour un pouvoir qui ne révèle qu'un décompte. Un sonar qui remplit ce champ
+            est un bug de conception, pas une optimisation.
+          items: { $ref: '#/components/schemas/RevealedCell' }
+        revealedCount: { type: integer, nullable: true }
+        shots:
+          type: array
+          items: { $ref: '#/components/schemas/ShotResult' }
+        message:      { type: string }
+        nextPlayerId: { type: string, format: uuid, nullable: true }
+        gameOver:     { type: boolean }
+        winnerId:     { type: string, format: uuid, nullable: true }
+
+    GameEvent:
+      type: object
+      required: [sequence, atUtc, type, message]
+      properties:
+        sequence: { type: integer }
+        atUtc:    { type: string, format: date-time }
+        type:
+          type: string
+          enum: [ShotFired, ShipSunk, PowerActivated, PowerCharging, PowerAborted, PowerResolved,
+                 EnergyChanged, TurnChanged, PlayerJoined, PlayerLeft, EmoteSent, GameOver]
+        actorId:  { type: string, format: uuid, nullable: true }
+        message:  { type: string, description: Texte prêt à afficher dans le journal. }
+        data:
+          type: object
+          nullable: true
+          additionalProperties: { type: string }
+          description: Charge utile spécifique au type, déjà filtrée pour le destinataire.
+
+    GameOver:
+      type: object
+      required: [gameId, winnerId, winnerName, reason, totalTurns, stats]
+      properties:
+        gameId:     { type: string, format: uuid }
+        winnerId:   { type: string, format: uuid }
+        winnerName: { type: string }
+        reason:     { type: string, enum: [FleetDestroyed, Forfeit, Disconnected, Timeout] }
+        totalTurns: { type: integer }
+        stats:
+          type: array
+          items: { $ref: '#/components/schemas/PlayerStats' }
+
+    PlayerStats:
+      type: object
+      required: [playerId, name, shotsFired, hits, accuracy, powersUsed, energySpent]
+      properties:
+        playerId:    { type: string, format: uuid }
+        name:        { type: string }
+        shotsFired:  { type: integer }
+        hits:        { type: integer }
+        accuracy:    { type: number, format: double, example: 0.41 }
+        powersUsed:  { type: integer }
+        energySpent: { type: integer }
+
+    FleetShip:
+      type: object
+      required: [type, size, count]
+      properties:
+        type:  { $ref: '#/components/schemas/ShipType' }
+        size:  { type: integer }
+        count: { type: integer }
+
+    FleetPreset:
+      type: object
+      required: [name, description, ships, minGridSize]
+      properties:
+        name:        { type: string, example: Classic }
+        description: { type: string }
+        ships:
+          type: array
+          items: { $ref: '#/components/schemas/FleetShip' }
+        minGridSize: { type: integer, example: 10 }
+
+    PowerPreset:
+      type: object
+      required: [name, description, powers]
+      properties:
+        name:        { type: string, example: Recon }
+        description: { type: string }
+        powers:
+          type: array
+          items: { $ref: '#/components/schemas/PowerId' }
+
+    ApiProblem:
+      type: object
+      description: ProblemDetails (RFC 9457) enrichi d'un code métier stable.
+      required: [title, status, detail, code]
+      properties:
+        type:   { type: string, example: 'about:blank' }
+        title:  { type: string, example: Conflit }
+        status: { type: integer, example: 409 }
+        detail: { type: string, example: Ce n'est pas votre tour. }
+        code:
+          type: string
+          description: |
+            Le front réagit à ce code, jamais au texte. Valeurs : VALIDATION_FAILED,
+            MISSING_TOKEN, NOT_A_PLAYER, GAME_NOT_FOUND, GAME_FULL, INVALID_JOIN_CODE,
+            NOT_YOUR_TURN, GAME_NOT_IN_PROGRESS, CELL_ALREADY_TARGETED, OUT_OF_BOUNDS,
+            OVERLAPPING_SHIPS, FLEET_INCOMPLETE, FLEET_ALREADY_PLACED, INSUFFICIENT_ENERGY,
+            POWER_ON_COOLDOWN, POWER_NOT_EQUIPPED, POWER_EXHAUSTED, POWER_ALREADY_CHARGING,
+            INVALID_TARGET, CARRIER_REQUIRED, SHIP_ALREADY_DAMAGED.
+          example: NOT_YOUR_TURN
+        errors:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: array
+            items: { type: string }

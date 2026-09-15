@@ -1,0 +1,150 @@
+@api = https://localhost:7001
+@token = REMPLACER_PAR_LE_PLAYER_TOKEN_RENVOYE_A_LA_CREATION
+@game = REMPLACER_PAR_LE_GAME_ID
+
+### Catalogue des pouvoirs (aucun token requis)
+GET {{api}}/api/catalog/powers
+
+### Compositions de flotte disponibles
+GET {{api}}/api/catalog/fleets
+
+### Loadouts pré-composés
+GET {{api}}/api/catalog/power-presets
+
+### Créer une partie solo contre l'IA de niveau 2
+POST {{api}}/api/games
+Content-Type: application/json
+
+{
+  "playerName": "Amiral Lea",
+  "mode": "SinglePlayer",
+  "gridWidth": 10,
+  "gridHeight": 10,
+  "fleetPreset": "Classic",
+  "aiLevel": "HuntTarget",
+  "powers": ["Sonar", "TripleSalvo", "Shield"],
+  "turnTimeoutSeconds": 0,
+  "seed": 42
+}
+
+### Créer une partie privée en ligne
+POST {{api}}/api/games
+Content-Type: application/json
+
+{
+  "playerName": "Amiral Lea",
+  "mode": "PrivateOnline",
+  "gridWidth": 10,
+  "gridHeight": 10,
+  "fleetPreset": "Classic",
+  "aiLevel": null,
+  "powers": ["Sonar", "OrbitalStrike", "ReactorOverload"],
+  "turnTimeoutSeconds": 30,
+  "seed": null
+}
+
+### Lister les parties publiques en attente
+GET {{api}}/api/games/open
+
+### Rejoindre par code
+POST {{api}}/api/games/join
+Content-Type: application/json
+
+{
+  "playerName": "Capitaine Tom",
+  "joinCode": "K7M4XQ",
+  "gameId": null,
+  "powers": ["TacticalRadar", "Sabotage", "Decoy"]
+}
+
+### Proposition de flotte aléatoire
+POST {{api}}/api/games/{{game}}/fleet/random
+X-Player-Token: {{token}}
+Content-Type: application/json
+
+{ "seed": 7 }
+
+### Déployer la flotte
+POST {{api}}/api/games/{{game}}/fleet
+X-Player-Token: {{token}}
+Content-Type: application/json
+
+{
+  "ships": [
+    { "type": "Carrier",    "origin": { "x": 0, "y": 0 }, "orientation": "Horizontal" },
+    { "type": "Battleship", "origin": { "x": 2, "y": 2 }, "orientation": "Vertical" },
+    { "type": "Cruiser",    "origin": { "x": 5, "y": 4 }, "orientation": "Horizontal" },
+    { "type": "Submarine",  "origin": { "x": 7, "y": 6 }, "orientation": "Vertical" },
+    { "type": "Destroyer",  "origin": { "x": 1, "y": 8 }, "orientation": "Horizontal" }
+  ]
+}
+
+### Se déclarer prêt
+POST {{api}}/api/games/{{game}}/ready
+X-Player-Token: {{token}}
+
+### État de la partie (vue filtrée pour ce token)
+GET {{api}}/api/games/{{game}}
+X-Player-Token: {{token}}
+
+### Tirer
+POST {{api}}/api/games/{{game}}/shots
+X-Player-Token: {{token}}
+Content-Type: application/json
+
+{ "target": { "x": 4, "y": 6 } }
+
+### Contrôle : retirer sur la même case doit renvoyer 409 CELL_ALREADY_TARGETED
+POST {{api}}/api/games/{{game}}/shots
+X-Player-Token: {{token}}
+Content-Type: application/json
+
+{ "target": { "x": 4, "y": 6 } }
+
+### Sonar — la réponse doit contenir revealedCount et un revealedCells VIDE
+POST {{api}}/api/games/{{game}}/powers
+X-Player-Token: {{token}}
+Content-Type: application/json
+
+{
+  "powerId": "Sonar",
+  "target": { "cell": { "x": 4, "y": 4 }, "shipId": null, "lineIndex": null, "lineIsRow": null, "carrierShipId": null }
+}
+
+### Frappe orbitale — démarre une charge de 10 tours, exige un porteur
+POST {{api}}/api/games/{{game}}/powers
+X-Player-Token: {{token}}
+Content-Type: application/json
+
+{
+  "powerId": "OrbitalStrike",
+  "target": { "cell": { "x": 6, "y": 6 }, "shipId": null, "lineIndex": null, "lineIsRow": null, "carrierShipId": "own-carrier-1" }
+}
+
+### Annuler la charge (l'énergie n'est pas remboursée)
+POST {{api}}/api/games/{{game}}/powers/cancel
+X-Player-Token: {{token}}
+Content-Type: application/json
+
+{ "powerId": "OrbitalStrike" }
+
+### Emote
+POST {{api}}/api/games/{{game}}/emotes
+X-Player-Token: {{token}}
+Content-Type: application/json
+
+{ "code": "WellPlayed" }
+
+### Rattrapage d'événements après reconnexion
+GET {{api}}/api/games/{{game}}/events?since=0
+X-Player-Token: {{token}}
+
+### Abandonner
+POST {{api}}/api/games/{{game}}/forfeit
+X-Player-Token: {{token}}
+
+### Contrôle : sans token, doit renvoyer 401 MISSING_TOKEN
+GET {{api}}/api/games/{{game}}
+
+### Sonde
+GET {{api}}/health
