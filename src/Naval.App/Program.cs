@@ -14,5 +14,6 @@ builder.Services.AddScoped(sp => new HttpClient
 
 builder.Services.AddScoped<IGameApiClient, GameApiClient>();
 builder.Services.AddScoped<GameStateStore>();
+builder.Services.AddScoped<AudioService>();
 
 await builder.Build().RunAsync();
