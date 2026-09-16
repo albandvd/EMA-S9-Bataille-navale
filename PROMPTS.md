@@ -291,3 +291,116 @@ confirmation) — sont notés comme connus, à reprendre à la fusion de `Naval.
 
 **Résultat observé :** Code revenu à l'état d'avant l'entrée annulée, sans toucher aux correctifs
 indépendants. Aucune régression sur les fonctionnalités qui restent en place.
+
+## Branchement de GameApiClient sur Naval.Api
+
+**Décision et justification :** `Naval.Api` existe désormais (mergé depuis `main`) ; `GameApiClient`
+était un stub `NotImplementedException`. Implémentation HTTP complète, avec plusieurs choix :
+
+- **Un seul point d'envoi/réception** (`SendAsync<T>`) plutôt qu'une méthode HTTP dédiée par
+  endpoint : chaque méthode de `IGameApiClient` ne fait que fournir verbe + route + corps + jeton
+  optionnel. Ça garantit que la gestion d'erreur (parsing `ApiProblemDto` → `GameApiException`)
+  et les options JSON sont appliquées identiquement partout, sans copier-coller.
+- **`JsonSerializerOptions` explicites** (`JsonSerializerDefaults.Web` + `JsonStringEnumConverter`)
+  plutôt que de compter sur les valeurs par défaut de `System.Net.Http.Json` : les extensions
+  `ReadFromJsonAsync`/`JsonContent.Create` sans options utilisent `JsonSerializerOptions.Default`
+  (PascalCase strict), qui ne correspond ni à la casse camelCase envoyée par
+  `Naval.Api` (config web par défaut des Minimal API) ni aux enums sérialisés en chaîne
+  (`ConfigureHttpJsonOptions` côté API ajoute `JsonStringEnumConverter`). Sans ce choix explicite,
+  chaque réponse aurait échoué à la désérialisation silencieusement (propriétés à leur valeur par
+  défaut) ou levé une exception sur les enums.
+- **`X-Player-Token` dupliqué en constante locale** plutôt que référencé depuis
+  `Naval.Api.Infrastructure.PlayerTokenAccessor.HeaderName` : `Naval.App` ne référence jamais
+  `Naval.Api` (règle explicite du CLAUDE.md). Le nom d'en-tête est un détail de contrat HTTP, déjà
+  documenté en toutes lettres dans le CLAUDE.md et l'OpenAPI — le dupliquer comme constante privée
+  est plus sûr que créer un couplage de projet interdit pour une seule chaîne de caractères.
+- **`GetFleetPresetAsync(name)` implémenté par filtrage client** de `GET /api/catalog/fleets` :
+  l'API n'expose qu'un endpoint « tous les presets », pas de route par nom. Comportement de refus
+  aligné sur `FakeGameApiClient` (même code `ErrorCodes.GameNotFound`) pour que le reste du front
+  (`DsErrorBanner`, `GameStateStore`) n'ait pas à distinguer les deux implémentations.
+
+**Bug de contrat découvert en cours de route — `ForfeitAsync` :** `IGameApiClient.ForfeitAsync`
+déclarait `Task<GameStateDto>`, et `FakeGameApiClient` fabriquait un faux `GameStateDto` en
+conséquence. Or `contracts/openapi.yaml` (source de vérité) documente depuis le départ que
+`POST /api/games/{gameId}/forfeit` renvoie un `GameOver`, et `Naval.Api` l'implémente bien ainsi
+(vérifié par un appel réel : réponse `{gameId, winnerId, winnerName, reason, totalTurns, stats}`).
+Le front s'était trompé de type de retour avant même que l'API existe. Corrigé : l'interface
+déclare maintenant `Task<GameOverDto>`, `FakeGameApiClient.ForfeitAsync` construit un `GameOverDto`
+plausible à partir de son état interne, et `GameStateStore.ForfeitAsync` enchaîne un
+`GetGameAsync` après le forfeit pour rafraîchir `CurrentGame` (même pattern que
+`FireAsync`/`UsePowerAsync`, qui ne récupèrent pas non plus l'état de partie complet dans leur
+réponse d'action). Aucune page ne consommait encore `Store.ForfeitAsync()` (pas de bouton
+« Abandonner » dans `Battle.razor`), donc aucun autre fichier à ajuster.
+
+**Réalignement des ports dev :** `Naval.App` tournait sur `7218` et `Naval.Api` sur `7279`, deux
+ports auto-générés par le scaffold de chaque moitié du binôme, alors que le `CLAUDE.md` documente
+`7002`/`7001` et que la policy CORS par défaut de `Naval.Api` (`Cors:AppOrigin`, jamais surchargée
+dans `appsettings`) vise justement `https://localhost:7002`. Corrigé dans les deux
+`launchSettings.json` pour que CORS fonctionne sans configuration supplémentaire. Ajout de
+`wwwroot/appsettings.json` (`ApiBaseUrl: https://localhost:7001/`) côté `Naval.App`, lu dans
+`Program.cs` pour construire le `HttpClient` injecté dans `GameApiClient` — c'est la même instance
+`HttpClient` scope qui était déjà déclarée (mais jamais consommée) depuis le cycle 1.
+
+**Bug backend découvert en vérifiant de bout en bout, non corrigé ici (hors périmètre du
+branchement front) :** en mode `SinglePlayer`, `GameService.CreateGameAsync` place bien la flotte
+IA (`p2.Fleet = aiFleet`) mais ne met jamais `p2.IsReady = true`. Or `PlaceFleetAsync` ne démarre
+la partie (`StartBattle`) que si `Player1.IsReady && Player2.IsReady` — en solo, `Player2` (l'IA)
+ne passe donc jamais à `IsReady`, et la partie reste bloquée en `AwaitingDeployment` après le
+placement du joueur humain, y compris en interrogeant l'API réelle directement (vérifié par appel
+`curl` direct, indépendamment de tout code front). Ce n'est pas un problème de câblage front : je
+n'ai pas touché `Naval.Api` sans qu'on me le demande, puisque ce n'est pas le périmètre de cette
+tâche et que c'est le code de l'autre moitié du binôme. Signalé pour action séparée.
+
+**Scénario de vérification :** `dotnet build` (0 avertissement/0 erreur), `dotnet test` (45/45,
+aucune régression). Vérification de bout en bout par appels `curl` directs contre `Naval.Api`
+réellement démarré (`dotnet run --project src/Naval.Api`) : `POST /api/games` (201, forme
+attendue), `GET /api/games/{id}` sans jeton (401 `MISSING_TOKEN`, forme `ApiProblemDto` conforme),
+`GET /api/catalog/fleets`, `GET /api/catalog/powers`, `POST /api/games/{id}/fleet/random`,
+`POST /api/games/{id}/fleet`, `POST /api/games/{id}/forfeit` (renvoie bien un `GameOver`,
+confirmant le correctif de contrat). `POST /api/games/{id}/shots` renvoie `409
+GAME_NOT_IN_PROGRESS` — attendu, conséquence directe du bug backend ci-dessus, pas du câblage
+front.
+
+**Résultat observé :** Le câblage HTTP lui-même (routes, en-têtes, formes JSON, gestion
+d'erreurs) est vérifié correct contre l'API réelle pour tous les appels testables en l'état
+(création, lecture, placement de flotte, erreurs). Le parcours de tir n'a pas pu être vérifié de
+bout en bout à cause du bug backend `Player2.IsReady` signalé ci-dessus — pas testable avant sa
+correction. `POST /api/games/{id}/powers` (`UsePowerAsync`) n'a pas d'endpoint côté `Naval.Api`
+pour l'instant (pas de `PowerEndpoints.cs`) : implémenté côté front conformément à l'OpenAPI, mais
+renverra 404 tant que ce n'est pas branché côté backend — cohérent avec la règle du projet de ne
+pas implémenter les pouvoirs avant que le solo ne soit jouable de bout en bout.
+
+## Correction du bug backend Player2.IsReady : la partie solo ne démarrait jamais
+
+**Décision et justification :** Root cause confirmée à la fois par lecture de code et par un test
+navigateur réel (Playwright/Brave) : `GameService.CreateGameAsync` génère bien la flotte IA
+(`p2.Fleet = aiFleet`) en mode `SinglePlayer`, mais ne met jamais `p2.IsReady = true`. Or
+`PlaceFleetAsync` ne déclenche `StartBattle` que si `Player1.IsReady && Player2.IsReady` — en
+solo, `Player2` (l'IA) ne passait donc jamais à `IsReady`, et la partie restait bloquée en
+`AwaitingDeployment` indéfiniment après que le joueur humain ait placé sa flotte, y compris via
+un vrai navigateur contre l'API réelle. Correctif : une ligne, `p2.IsReady = true;` juste après
+l'assignation de la flotte IA dans `CreateGameAsync`. Pas de changement de contrat, pas de DTO
+touché, `openapi.yaml` n'a donc pas besoin de mise à jour.
+
+**Scénario de vérification :**
+1. Deux nouveaux tests dans `tests/Naval.Tests/Api/GameServiceTests.cs` (`GameService`
+   instancié directement avec `InMemoryGameStore`, sans monter tout `Naval.Api`) :
+   `CreateGameAsync_marks_the_ai_opponent_ready_in_single_player` (assert direct sur
+   `game.Player2.IsReady`) et `PlaceFleetAsync_starts_the_battle_once_the_human_player_is_ready_in_single_player`
+   (place une flotte valide via `SuggestRandomFleetAsync` puis vérifie `game.Status ==
+   InProgress`). Les deux tests ont été vérifiés **rouges** avant le correctif (stash temporaire
+   du fix, `dotnet test --filter GameServiceTests` → 2 échecs avec les messages d'assertion
+   attendus), puis verts après restauration — pas seulement écrits après coup pour cocher une
+   case.
+2. Vérification de bout en bout dans un vrai navigateur (Brave, via le serveur MCP
+   `playwright-brave`) : redémarrage de `Naval.Api` avec le correctif, parcours complet Lobby →
+   Deploy (5 navires placés un par un) → clic « Valider la flotte ». La page navigue vers
+   `/battle`, le journal d'événements affiche « La bataille commence. Tour de Joueur. » et
+   « Joueur a déployé sa flotte. », la grille adverse est vide (aucune fuite d'information), la
+   grille propre affiche la flotte complète correctement positionnée.
+3. `dotnet build` (0 avertissement/0 erreur), `dotnet test` (47/47, aucune régression).
+
+**Résultat observé :** Le parcours solo complet (Lobby → Deploy → Battle) est maintenant
+jouable de bout en bout, vérifié à la fois par test automatisé et par un vrai navigateur. C'est
+le dernier bloquant fonctionnel connu pour la partie solo ; le tir/la résolution de combat n'ont
+pas encore été testés au-delà du démarrage de la bataille (hors périmètre de cette correction).
