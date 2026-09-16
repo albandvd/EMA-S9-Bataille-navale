@@ -16,11 +16,8 @@
     <ProjectReference Include="..\Naval.Shared\Naval.Shared.csproj" />
   </ItemGroup>
 
-  <!-- Les SVG sources vivent dans /assets (voir docs/04-assets.md et docs/03-architecture.md) ;
-       ce lien les publie sous wwwroot/assets sans dupliquer les fichiers dans le dépôt. -->
-  <ItemGroup>
-    <Content Include="..\..\assets\sprites\**\*.svg" Link="wwwroot\assets\sprites\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\..\assets\icons\**\*.svg" Link="wwwroot\assets\icons\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
+  <!-- Les SVG sources vivent dans /assets (voir docs/04-assets.md). Le montage par Link
+       renvoyait des réponses vides avec le dev server : les fichiers sont copiés dans
+       wwwroot/assets, qui reste la copie servie. -->
 
 </Project>

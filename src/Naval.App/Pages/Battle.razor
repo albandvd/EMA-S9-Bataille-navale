@@ -1,6 +1,7 @@
 @page "/battle"
 @inject GameStateStore Store
 @inject NavigationManager Navigation
+@inject AudioService Audio
 @implements IDisposable
 
 <DsConsole>
@@ -9,7 +10,9 @@
             <h2>Grille adverse</h2>
             @if (Store.CurrentGame is { } game)
             {
-                <GridView Board="game.Opponent.TargetBoard" OnCellClicked="HandleFire" />
+                <GridView Board="game.Opponent.TargetBoard"
+                          OnCellClicked="HandleFire"
+                          ShipSprites="ToSprites(game.Opponent.SunkShips)" />
             }
         </DsTopScreen>
     </TopScreen>
@@ -19,7 +22,7 @@
             @if (Store.CurrentGame is { } current)
             {
                 <h2>Votre grille</h2>
-                <GridView Board="current.Self.Board" />
+                <GridView Board="current.Self.Board" ShipSprites="ToSprites(current.Self.Fleet)" />
                 <EnergyGauge Energy="current.Self.Energy" />
                 <ChargeMeter Charge="current.Opponent.Charge" />
                 <PowerBar Powers="current.Self.Powers" OnPowerActivated="HandlePower" />
@@ -41,15 +44,82 @@
 
     private async Task HandleFire(CoordinateDto target)
     {
+        var before = Store.CurrentGame;
+        Audio.Play("fire");
         await Store.FireAsync(target);
+
+        PlayFireResult(before, Store.CurrentGame);
         if (Store.CurrentGame?.Status == GameStatus.Finished)
         {
             Navigation.NavigateTo("/result");
         }
     }
 
-    private Task HandlePower(PowerId id) =>
-        Store.UsePowerAsync(id, new PowerTargetDto(null, null, null, null, null));
+    /// <summary>
+    /// Choisit le bruitage du résultat en comparant l'état avant/après : ce n'est pas une
+    /// règle de jeu, seulement la lecture de ce que le serveur a déjà tranché.
+    /// </summary>
+    private void PlayFireResult(GameStateDto? before, GameStateDto? after)
+    {
+        if (Store.LastError is not null)
+        {
+            Audio.Play("deny");
+            return;
+        }
+
+        if (before is null || after is null)
+        {
+            return;
+        }
+
+        if (after.Opponent.SunkShips.Count > before.Opponent.SunkShips.Count)
+        {
+            Audio.Play("sunk");
+        }
+        else if (CountHits(after.Opponent.TargetBoard) > CountHits(before.Opponent.TargetBoard))
+        {
+            Audio.Play("explosion");
+        }
+        else
+        {
+            Audio.Play("splash");
+        }
+    }
+
+    private static int CountHits(BoardViewDto board) =>
+        board.Rows.Sum(row => row.Count(c => c is 'x' or '#'));
+
+    private async Task HandlePower(PowerId id)
+    {
+        Audio.Play("sonar-ping");
+        await Store.UsePowerAsync(id, new PowerTargetDto(null, null, null, null, null));
+    }
+
+    /// <summary>
+    /// Convertit des navires en sprites de grille. Ne produit un sprite que si le serveur a
+    /// fourni les cases (sa propre flotte, ou les navires adverses déjà coulés) : aucune
+    /// position non révélée ne transite par ici.
+    /// </summary>
+    private static IReadOnlyList<GridView.ShipSpriteOverlay> ToSprites(IReadOnlyList<ShipStateDto> ships)
+    {
+        var sprites = new List<GridView.ShipSpriteOverlay>();
+        foreach (var ship in ships)
+        {
+            if (ship.Cells is not { Count: > 0 } cells)
+            {
+                continue;
+            }
+
+            var minX = cells.Min(c => c.X);
+            var minY = cells.Min(c => c.Y);
+            var vertical = cells.Count > 1 && cells.All(c => c.X == minX);
+            var variant = ship.IsSunk ? "-sunk" : ship.Hits > 0 ? "-damaged" : "";
+            sprites.Add(new GridView.ShipSpriteOverlay(
+                ship.Type, new CoordinateDto(minX, minY), vertical, ship.Size, variant));
+        }
+
+        return sprites;
+    }
 
     private void OnStoreChanged() => InvokeAsync(StateHasChanged);
 
