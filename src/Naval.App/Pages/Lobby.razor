@@ -12,22 +12,24 @@
     </TopScreen>
     <BottomScreen>
         <DsBottomScreen>
-            <label>
-                Pseudo
-                <input @bind="_playerName" />
-            </label>
-            <label>
-                Taille de grille
-                <input type="number" @bind="_gridSize" min="8" max="16" />
-            </label>
-            <label>
-                Flotte
-                <select @bind="_fleetPreset">
-                    <option value="Classic">Classic</option>
-                    <option value="Skirmish">Skirmish</option>
-                </select>
-            </label>
-            <DsButton Label="Démarrer" OnClick="StartGame" />
+            <div class="ds-form">
+                <label class="ds-field">
+                    <span class="ds-field__label">Pseudo</span>
+                    <input class="ds-field__control" @bind="_playerName" placeholder="Joueur" />
+                </label>
+                <label class="ds-field">
+                    <span class="ds-field__label">Taille de grille</span>
+                    <input class="ds-field__control" type="number" @bind="_gridSize" min="8" max="16" />
+                </label>
+                <label class="ds-field">
+                    <span class="ds-field__label">Flotte</span>
+                    <select class="ds-field__control" @bind="_fleetPreset">
+                        <option value="Classic">Classic</option>
+                        <option value="Skirmish">Skirmish</option>
+                    </select>
+                </label>
+                <DsButton Label="Démarrer" OnClick="StartGame" />
+            </div>
         </DsBottomScreen>
     </BottomScreen>
 </DsConsole>

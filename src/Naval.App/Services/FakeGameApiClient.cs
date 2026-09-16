@@ -95,7 +95,7 @@ public sealed class FakeGameApiClient : IGameApiClient
                 Cells(ship.Origin, ship.Orientation, ShipSize(ship.Type))))
             .ToList();
 
-        var self = _game!.Self with { Fleet = fleet };
+        var self = _game!.Self with { Fleet = fleet, Board = PaintFleet(_game.Self.Board, fleet) };
         _game = _game with
         {
             Status = GameStatus.InProgress,
@@ -213,6 +213,22 @@ public sealed class FakeGameApiClient : IGameApiClient
         ShipType.Destroyer => 2,
         _ => throw new ArgumentOutOfRangeException(nameof(type))
     };
+
+    /// <summary>
+    /// Peint les cases occupées par la flotte du joueur sur son propre plateau. Sans risque de
+    /// fuite : il s'agit toujours de sa propre flotte, jamais de celle de l'adversaire.
+    /// </summary>
+    private static BoardViewDto PaintFleet(BoardViewDto board, IReadOnlyList<ShipStateDto> fleet)
+    {
+        var rows = board.Rows.Select(row => row.ToCharArray()).ToArray();
+
+        foreach (var cell in fleet.SelectMany(ship => ship.Cells ?? []))
+        {
+            rows[cell.Y][cell.X] = 'S';
+        }
+
+        return board with { Rows = rows.Select(row => new string(row)).ToList() };
+    }
 
     private static List<CoordinateDto> Cells(CoordinateDto origin, Orientation orientation, int size) =>
         Enumerable.Range(0, size)

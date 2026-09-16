@@ -42,3 +42,70 @@
     padding: 8px 12px;
     border-radius: 8px;
 }
+
+.ds-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.ds-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ds-field__label {
+    font-size: .75rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--screen-glow);
+}
+
+.ds-field__control {
+    background: var(--sea);
+    color: var(--text);
+    border: 1px solid var(--sea-light);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-family: inherit;
+    font-size: 1rem;
+}
+
+.ds-field__control:focus {
+    outline: none;
+    border-color: var(--screen-glow);
+    box-shadow: 0 0 0 2px rgba(142, 202, 230, .35);
+}
+
+.ds-field__control::placeholder {
+    color: var(--hull);
+}
+
+.ship-tray {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ship-tray__item {
+    background: var(--sea);
+    color: var(--text);
+    border: 1px solid var(--sea-light);
+    border-radius: 8px;
+    padding: 8px 10px;
+    cursor: pointer;
+}
+
+.ship-tray__item:hover {
+    border-color: var(--screen-glow);
+}
+
+.ship-tray__item--selected {
+    outline: 2px solid var(--screen-glow);
+    background: var(--sea-light);
+}
+
+.ship-tray__rotate {
+    align-self: flex-start;
+}

@@ -6,6 +6,7 @@
 <DsConsole>
     <TopScreen>
         <DsTopScreen>
+            <h2>Votre grille</h2>
             @if (Store.CurrentGame is { } game)
             {
                 <GridView Board="game.Self.Board" OnCellClicked="HandleCellClicked" />

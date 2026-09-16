@@ -1,12 +1,12 @@
 <div class="ship-tray">
-    @foreach (var ship in Fleet)
+    @foreach (var ship in Fleet.Where(s => !_placedIds.Contains(s.Id)))
     {
         <div class="ship-tray__item @(ship == _selected ? "ship-tray__item--selected" : "")"
              @onclick="() => Select(ship)">
             @ship.Type (@ship.Size)
         </div>
     }
-    <button class="ship-tray__rotate" @onclick="ToggleOrientation">
+    <button class="ship-tray__rotate ds-button" @onclick="ToggleOrientation">
         Orientation : @_orientation
     </button>
 </div>
@@ -17,6 +17,7 @@
 
     private ShipStateDto? _selected;
     private Orientation _orientation = Orientation.Horizontal;
+    private readonly HashSet<string> _placedIds = [];
 
     private void Select(ShipStateDto ship) => _selected = ship;
 
@@ -31,6 +32,7 @@
         }
 
         var placement = new ShipPlacementDto(_selected.Type, origin, _orientation);
+        _placedIds.Add(_selected.Id);
         _selected = null;
         return OnShipPlaced.HasDelegate ? OnShipPlaced.InvokeAsync(placement) : Task.CompletedTask;
     }

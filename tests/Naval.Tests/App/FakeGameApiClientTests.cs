@@ -73,6 +73,27 @@ public class FakeGameApiClientTests
     }
 
     [Fact]
+    public async Task PlaceFleetAsync_paints_the_ship_cells_onto_the_player_s_own_board()
+    {
+        var client = new FakeGameApiClient();
+        var createRequest = new CreateGameRequest("Joueur", GameMode.SinglePlayer, 5, 5, "Skirmish", AiLevel.Random, [], 0, null);
+        var response = await client.CreateGameAsync(createRequest, CancellationToken.None);
+
+        await client.PlaceFleetAsync(response.GameId, response.PlayerToken,
+            new PlaceFleetRequest([new ShipPlacementDto(ShipType.Destroyer, new CoordinateDto(1, 2), Orientation.Horizontal)]),
+            CancellationToken.None);
+
+        var game = await client.GetGameAsync(response.GameId, response.PlayerToken, CancellationToken.None);
+
+        game.Self.Board.Rows[2][1].Should().Be('S');
+        game.Self.Board.Rows[2][2].Should().Be('S');
+        game.Self.Board.Rows
+            .SelectMany((row, y) => row.Select((c, x) => (x, y, c)))
+            .Count(cell => cell.c == 'S')
+            .Should().Be(2);
+    }
+
+    [Fact]
     public async Task GetPowerCatalogAsync_returns_unique_power_definitions()
     {
         var client = new FakeGameApiClient();

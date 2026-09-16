@@ -6,6 +6,7 @@
 <DsConsole>
     <TopScreen>
         <DsTopScreen>
+            <h2>Grille adverse</h2>
             @if (Store.CurrentGame is { } game)
             {
                 <GridView Board="game.Opponent.TargetBoard" OnCellClicked="HandleFire" />
@@ -17,6 +18,7 @@
             <DsErrorBanner Problem="Store.LastError" />
             @if (Store.CurrentGame is { } current)
             {
+                <h2>Votre grille</h2>
                 <GridView Board="current.Self.Board" />
                 <EnergyGauge Energy="current.Self.Energy" />
                 <ChargeMeter Charge="current.Opponent.Charge" />
