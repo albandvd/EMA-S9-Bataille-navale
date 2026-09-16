@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Naval.Api/Naval.Api.csproj" />
+    <Project Path="src/Naval.Shared/Naval.Shared.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Naval.Tests/Naval.Tests.csproj" />
+  </Folder>
+</Solution>
