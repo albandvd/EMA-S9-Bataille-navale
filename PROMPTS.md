@@ -404,3 +404,77 @@ touché, `openapi.yaml` n'a donc pas besoin de mise à jour.
 jouable de bout en bout, vérifié à la fois par test automatisé et par un vrai navigateur. C'est
 le dernier bloquant fonctionnel connu pour la partie solo ; le tir/la résolution de combat n'ont
 pas encore été testés au-delà du démarrage de la bataille (hors périmètre de cette correction).
+
+## Infra Docker pour le déploiement (`infra/docker/`, `docker-compose.yml`)
+
+**Décision et justification :** Deux images, une par projet déployable — `naval-api`
+(`Naval.Api` publié, exécuté par `dotnet` sur `mcr.microsoft.com/dotnet/aspnet:10.0`) et
+`naval-app` (`Naval.App` compilé en Blazor WebAssembly, fichiers statiques servis par nginx).
+`Naval.Shared` n'a pas d'image propre : il ne compile que comme dépendance des deux autres,
+toujours quatre projets, pas un cinquième. Les deux `Dockerfile` copient explicitement
+`global.json` et `Directory.Build.props` avant le code source, au même niveau relatif qu'en
+local, pour que MSBuild retrouve le verrou de SDK et les propriétés communes
+(`TreatWarningsAsErrors`, `Nullable`, etc.) en remontant l'arborescence depuis chaque `.csproj`
+— sans ça le build en conteneur pourrait accepter des avertissements qu'un `dotnet build` local
+rejette.
+
+Décision la plus significative : **`ApiBaseUrl` et `Cors:AppOrigin` sont injectés à
+l'exécution du conteneur, jamais figés au build.** `Naval.App` est du Blazor WebAssembly : le
+code qui lit `ApiBaseUrl` (`Program.cs`) s'exécute dans le navigateur du joueur, pas dans le
+conteneur `naval-app`. Un `ApiBaseUrl` pointant vers un nom de service Docker
+(`http://api:8080`) serait donc injoignable — ce nom n'existe que dans le réseau interne
+Compose, pas pour le navigateur. Pareil côté API : `Cors:AppOrigin` doit être l'origine que le
+navigateur affiche réellement, pas un nom de service. J'ai donc :
+1. Fait lire `Cors__AppOrigin` comme variable d'environnement côté `naval-api` (mécanisme
+   standard de la configuration ASP.NET Core, aucun code à ajouter).
+2. Ajouté un script dans `docker-entrypoint.d/` côté `naval-app`, exécuté automatiquement par
+   l'image nginx officielle avant le démarrage du serveur, qui régénère
+   `wwwroot/appsettings.json` à partir d'un template (`envsubst` sur `API_BASE_URL`). Ça permet
+   de construire l'image une seule fois et de la redéployer telle quelle en dev/staging/prod —
+   seule la variable d'environnement change, jamais un rebuild.
+
+Autres choix mineurs : `nginx:1.27-alpine` plutôt que servir les fichiers statiques depuis
+`Naval.Api` (qui violerait « `Naval.App` ne référence jamais `Naval.Api` » — l'inverse n'est
+pas interdit par la lettre de la règle, mais mélanger front statique et API dans un seul
+conteneur casse le déploiement indépendant des deux, donc écarté) ; `Content-Type:
+application/wasm` forcé explicitement dans la conf nginx plutôt que de compter sur
+`mime.types`, parce que certains navigateurs refusent la compilation en streaming du module
+WASM sans ce type MIME exact ; `HEALTHCHECK` sur `naval-api` utilisé par `docker-compose.yml`
+pour ordonner le démarrage (`depends_on: condition: service_healthy`) avant `naval-app`, même si
+`naval-app` n'a pas besoin de l'API pour démarrer (statique), pour un ordre de boot lisible en
+démo.
+
+**Scénario de vérification :**
+1. `docker build -f infra/docker/Naval.Api.Dockerfile .` et `docker build -f
+   infra/docker/Naval.App.Dockerfile .` depuis la racine du dépôt : les deux réussissent sans
+   avertissement (une première tentative a échoué sur `groupadd --gid 1000`, le GID étant déjà
+   pris dans l'image de base `aspnet:10.0` — corrigé en laissant `groupadd`/`useradd` assigner
+   un GID libre automatiquement plutôt que de le figer).
+2. `docker compose up --build -d` avec un `.env` copié depuis `.env.example` : les deux
+   conteneurs démarrent, `naval-api` passe `Healthy` avant que `naval-app` ne démarre
+   (confirmé dans les logs `docker compose up`).
+3. `curl http://localhost:5119/health` → `{"status":"Healthy","activeGames":0}`.
+4. `curl http://localhost:8080/appsettings.json` → `{"ApiBaseUrl":
+   "http://localhost:5119/"}`, confirmant l'injection à l'exécution (le fichier généré, pas un
+   fichier baked au build).
+5. `curl -D - http://localhost:8080/_framework/<nom-fingerprinté>.wasm` → `Content-Type:
+   application/wasm`, `Cache-Control: public, max-age=31536000, immutable`.
+6. Tous les assets référencés par le `<script>` fingerprinté réel de `index.html`
+   (`dotnet.*.js`, `blazor.webassembly.*.js`, `dotnet.native.*.js`, `dotnet.runtime.*.js`)
+   renvoient `200`.
+7. `curl http://localhost:8080/lobby` (route côté client, pas un fichier réel) → `200`,
+   confirme le fallback SPA (`try_files … /index.html`).
+8. CORS : préflight `OPTIONS /api/games` avec `Origin: http://localhost:8080` (l'origine
+   configurée) → `204` avec `Access-Control-Allow-Origin: http://localhost:8080`. Même requête
+   avec `Origin: http://evil.example` → `204` mais **sans** aucun en-tête
+   `Access-Control-Allow-*` — la policy CORS de `Naval.Api` rejette bien silencieusement une
+   origine non autorisée.
+9. `docker compose down` propre, images de test et `.env` de vérification supprimés après coup.
+
+**Résultat observé :** La stack se construit et démarre proprement avec `docker compose up
+--build`, sans modification du code applicatif. Le point de conception central — ne jamais
+figer une adresse réseau interne à Docker dans ce que le navigateur doit résoudre — est
+vérifié : changer `.env` seul (sans rebuild) suffit à repointer le déploiement vers d'autres
+hôtes. Non couvert volontairement, documenté dans `infra/docker/README.md` : pas de
+persistance (cohérent avec `IGameStore` en mémoire tant que `E-27` n'est pas demandée), pas de
+TLS (à terminer en amont par un reverse proxy en prod), pas de pipeline CI.

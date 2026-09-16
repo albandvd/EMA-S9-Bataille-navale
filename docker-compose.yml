@@ -1,0 +1,40 @@
+# Déploiement Docker de bout en bout : Naval.Api (API + SignalR) et Naval.App (Blazor
+# WebAssembly, servi par nginx). Voir infra/docker/README.md pour le détail des choix.
+#
+# Important : Naval.App tourne dans le navigateur du joueur, pas dans le réseau Docker.
+# API_BASE_URL (côté app) et CORS__APPORIGIN (côté api) doivent donc tous les deux désigner
+# des adresses que le navigateur peut atteindre — jamais un nom de service ("http://api:8080").
+# Par défaut ci-dessous, les deux passent par localhost, adapté à un déploiement mono-hôte
+# (démo, VM unique). Pour un vrai déploiement, surchargez les deux dans .env (copiez
+# .env.example) avec les URL publiques réelles.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/Naval.Api.Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Cors__AppOrigin: ${APP_PUBLIC_URL:-http://localhost:8080}
+    ports:
+      - "${API_PUBLISHED_PORT:-5119}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: infra/docker/Naval.App.Dockerfile
+    environment:
+      API_BASE_URL: ${API_PUBLIC_URL:-http://localhost:5119/}
+    ports:
+      - "${APP_PUBLISHED_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
