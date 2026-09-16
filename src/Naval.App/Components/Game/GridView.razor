@@ -1,17 +1,45 @@
-<div class="grid-view" style="grid-template-columns: repeat(@Board.Width, 1fr);" @onmouseleave="HandleGridLeave">
-    @for (var y = 0; y < Board.Rows.Count; y++)
-    {
-        var row = Board.Rows[y];
-        for (var x = 0; x < row.Length; x++)
+<div class="grid-frame">
+    <div class="grid-labels grid-labels--cols" aria-hidden="true">
+        @for (var x = 0; x < Board.Width; x++)
         {
-            var coordinate = new CoordinateDto(x, y);
-            var state = row[x];
-            <GridCell State="state"
-                      Preview="GetPreviewState(coordinate)"
-                      OnClick="() => HandleCellClicked(coordinate)"
-                      OnHoverEnter="() => HandleHoverEnter(coordinate)" />
+            <span>@((char)('A' + x))</span>
         }
-    }
+    </div>
+    <div class="grid-labels grid-labels--rows" aria-hidden="true">
+        @for (var y = 0; y < Board.Height; y++)
+        {
+            <span>@(y + 1)</span>
+        }
+    </div>
+    <div class="grid-view" style="grid-template-columns: repeat(@Board.Width, 1fr);" @onmouseleave="HandleGridLeave">
+        @for (var y = 0; y < Board.Rows.Count; y++)
+        {
+            var row = Board.Rows[y];
+            for (var x = 0; x < row.Length; x++)
+            {
+                var coordinate = new CoordinateDto(x, y);
+                var state = row[x];
+                <GridCell State="state"
+                          Preview="GetPreviewState(coordinate)"
+                          OnClick="() => HandleCellClicked(coordinate)"
+                          OnHoverEnter="() => HandleHoverEnter(coordinate)" />
+            }
+        }
+        @if (ShipSprites is { Count: > 0 })
+        {
+            <div class="grid-ships"
+                 style="grid-template-columns: repeat(@Board.Width, 1fr); grid-template-rows: repeat(@Board.Height, 1fr);"
+                 aria-hidden="true">
+                @foreach (var ship in ShipSprites)
+                {
+                    <div class="grid-ship @(ship.Vertical ? "grid-ship--vertical" : null)"
+                         style="grid-column: @(ship.Origin.X + 1) / span @(ship.Vertical ? 1 : ship.Size); grid-row: @(ship.Origin.Y + 1) / span @(ship.Vertical ? ship.Size : 1); --len: @ship.Size;">
+                        <img src="@SpriteSrc(ship)" alt="" />
+                    </div>
+                }
+            </div>
+        }
+    </div>
 </div>
 
 @code {
@@ -24,6 +52,24 @@
     /// <summary>Cases à surligner comme aperçu de placement, avec leur validité commune.</summary>
     [Parameter] public IReadOnlySet<CoordinateDto>? PreviewCells { get; set; }
     [Parameter] public bool PreviewValid { get; set; }
+
+    /// <summary>
+    /// Sprites de navires à superposer sur la grille. Purement décoratif : uniquement la propre
+    /// flotte du joueur (ou ses placements en cours), jamais les navires adverses non révélés.
+    /// </summary>
+    [Parameter] public IReadOnlyList<ShipSpriteOverlay>? ShipSprites { get; set; }
+
+    /// <summary>Position et état d'affichage d'un sprite de navire sur la grille.</summary>
+    /// <param name="Variant">"" (intact), "-damaged" ou "-sunk" — suffixe du fichier SVG.</param>
+    public sealed record ShipSpriteOverlay(
+        ShipType Type,
+        CoordinateDto Origin,
+        bool Vertical,
+        int Size,
+        string Variant);
+
+    private static string SpriteSrc(ShipSpriteOverlay ship) =>
+        $"assets/sprites/ships/{ship.Type.ToString().ToLowerInvariant()}{ship.Variant}.svg";
 
     private Task HandleCellClicked(CoordinateDto coordinate) =>
         OnCellClicked.HasDelegate ? OnCellClicked.InvokeAsync(coordinate) : Task.CompletedTask;

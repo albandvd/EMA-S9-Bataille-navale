@@ -1,15 +1,27 @@
 @page "/"
 @inject NavigationManager Navigation
 
+<PageTitle>Bataille Navale</PageTitle>
+
 <DsConsole>
     <TopScreen>
         <DsTopScreen>
-            <h1>Bataille Navale</h1>
+            <div class="title-screen">
+                <h1 class="title-logo">Bataille<span>Navale</span></h1>
+                <p class="title-screen__sub">Édition Navcom</p>
+                <div class="title-ship" aria-hidden="true"></div>
+                <div class="wave" aria-hidden="true"></div>
+                <div class="wave" aria-hidden="true"></div>
+                <div class="wave" aria-hidden="true"></div>
+            </div>
         </DsTopScreen>
     </TopScreen>
     <BottomScreen>
         <DsBottomScreen>
-            <DsButton Label="Nouvelle partie" OnClick="GoToLobby" />
+            <div class="press-start">
+                <span class="press-start__hint">— Prêt à appareiller —</span>
+                <DsButton Label="Nouvelle partie" OnClick="GoToLobby" />
+            </div>
         </DsBottomScreen>
     </BottomScreen>
 </DsConsole>

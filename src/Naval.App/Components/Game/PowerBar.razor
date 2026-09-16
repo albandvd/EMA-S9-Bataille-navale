@@ -3,19 +3,23 @@
     {
         <button class="power-bar__slot power-bar__slot--@slot.Status.ToString().ToLowerInvariant()"
                 disabled="@(!slot.CanAffordNow || slot.Status != PowerSlotStatus.Ready)"
+                title="@slot.PowerId"
                 @onclick="() => Activate(slot.PowerId)">
+            <span class="power-bar__icon"
+                  style="--icon-url: url('/assets/icons/powers/@(ToKebab(slot.PowerId)).svg')"
+                  aria-hidden="true"></span>
             <span>@slot.PowerId</span>
             @if (slot.Status == PowerSlotStatus.Charging)
             {
-                <span>Charge : @slot.ChargeRemaining</span>
+                <span class="power-bar__meta">Charge : @slot.ChargeRemaining</span>
             }
             @if (slot.CooldownRemaining > 0)
             {
-                <span>CD : @slot.CooldownRemaining</span>
+                <span class="power-bar__meta">CD : @slot.CooldownRemaining</span>
             }
             @if (slot.UsesLeft >= 0)
             {
-                <span>x@slot.UsesLeft</span>
+                <span class="power-bar__meta">x@slot.UsesLeft</span>
             }
         </button>
     }
@@ -27,4 +31,25 @@
 
     private Task Activate(PowerId id) =>
         OnPowerActivated.HasDelegate ? OnPowerActivated.InvokeAsync(id) : Task.CompletedTask;
+
+    /// <summary>
+    /// Convertit un PowerId en kebab-case pour retrouver son icône :
+    /// TacticalRadar → tactical-radar (convention de docs/04-assets.md §5).
+    /// </summary>
+    private static string ToKebab(PowerId id)
+    {
+        var name = id.ToString();
+        var builder = new System.Text.StringBuilder(name.Length + 4);
+        for (var i = 0; i < name.Length; i++)
+        {
+            if (char.IsUpper(name[i]) && i > 0)
+            {
+                builder.Append('-');
+            }
+
+            builder.Append(char.ToLowerInvariant(name[i]));
+        }
+
+        return builder.ToString();
+    }
 }

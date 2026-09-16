@@ -1,3 +1,5 @@
+@inject AudioService Audio
+
 @if (Charge.IsCharging)
 {
     <div class="charge-meter" role="status">
@@ -18,4 +20,17 @@
 
 @code {
     [Parameter, EditorRequired] public OpponentChargeDto Charge { get; set; } = null!;
+
+    private bool _wasCharging;
+
+    /// <summary>Sonne l'alarme une seule fois, au moment où la charge adverse est détectée.</summary>
+    protected override void OnParametersSet()
+    {
+        if (Charge.IsCharging && !_wasCharging)
+        {
+            Audio.Play("alarm");
+        }
+
+        _wasCharging = Charge.IsCharging;
+    }
 }

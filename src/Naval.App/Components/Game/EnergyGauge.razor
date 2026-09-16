@@ -1,7 +1,18 @@
-<div class="energy-gauge" aria-label="Énergie : @Energy">
+<div class="energy-gauge" role="meter" aria-valuenow="@Energy" aria-label="Énergie : @Energy">
+    <span class="energy-gauge__label">Énergie</span>
+    <div class="energy-gauge__cells" aria-hidden="true">
+        @for (var i = 0; i < SegmentCount; i++)
+        {
+            <i class="@(i < LitSegments ? "is-on" : null)"></i>
+        }
+    </div>
     <span class="energy-gauge__value">@Energy</span>
 </div>
 
 @code {
+    private const int SegmentCount = 10;
+
     [Parameter] public int Energy { get; set; }
+
+    private int LitSegments => Math.Clamp(Energy, 0, SegmentCount);
 }

@@ -1,0 +1,20 @@
+@inject AudioService Audio
+@implements IDisposable
+
+@* Haut-parleur de la console : chaque son actif devient un élément <audio autoplay>.
+   Le navigateur le joue dès son insertion — autorisé car tous nos déclencheurs
+   suivent un clic. Aucun JavaScript n'est nécessaire. *@
+<div class="audio-channel" aria-hidden="true">
+    @foreach (var sound in Audio.Sounds)
+    {
+        <audio @key="sound.Id" src="assets/audio/@(sound.Name).wav" autoplay preload="auto"></audio>
+    }
+</div>
+
+@code {
+    protected override void OnInitialized() => Audio.Changed += OnAudioChanged;
+
+    private void OnAudioChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Audio.Changed -= OnAudioChanged;
+}

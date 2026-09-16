@@ -16,8 +16,15 @@ question toute prête pour le correcteur.
 
 ## Polices
 
-- <!-- ex. Press Start 2P — CodeMan38, SIL Open Font License 1.1 -->
+Chargées depuis Google Fonts (voir `wwwroot/index.html`) :
+
+- Black Ops One — James Grieshaber (Typodermic), SIL Open Font License 1.1 — logo et titres.
+- Silkscreen — Jason Kottke, SIL Open Font License 1.1 — libellés d'interface.
+- VT323 — Peter Hull, SIL Open Font License 1.1 — données, journal, coordonnées.
 
 ## Audio
 
-- <!-- ex. Bruitages — générés avec jsfxr, création originale -->
+- Bruitages 8-bit (`src/Naval.App/wwwroot/assets/audio/*.wav`, 12 fichiers) — création
+  originale : synthèse programmatique en C# (ondes carrées, bruit blanc filtré, enveloppes
+  exponentielles, bitcrush), à la manière de jsfxr. Volumes finaux pré-mixés dans les
+  fichiers. Aucune attribution requise.

@@ -1,22 +1,102 @@
+/* ============================================================
+   Tokens — système de design de la console « Naval DS »
+   ============================================================ */
+
 :root {
+  /* Océan */
+  --sea-abyss:    #041226;
   --sea-deep:     #0b2545;
   --sea:          #13315c;
   --sea-light:    #1c4c7c;
+  --sea-foam:     #9bd1e5;
+
+  /* Coque de la console */
+  --shell:        #1b1e2f;
+  --shell-light:  #2a2e45;
+  --shell-dark:   #12141f;
+  --shell-edge:   #3d4263;
+  --shell-metal:  linear-gradient(160deg, #262a40 0%, #1b1e2f 45%, #141624 100%);
+
+  /* Navires */
   --hull:         #8d99ae;
   --hull-dark:    #5c677d;
-  --hit:          #ef233c;
+
+  /* États de jeu */
+  --hit:          #ff3b5c;
+  --hit-glow:     rgba(255, 59, 92, .55);
   --sunk:         #6a040f;
-  --miss:         #adb5bd;
+  --miss:         #6b7b8f;
   --energy:       #ffd166;
+  --energy-glow:  rgba(255, 209, 102, .45);
   --charge:       #06d6a0;
-  --shell:        #2b2d42;
-  --shell-light:  #3d405b;
-  --screen-glow:  #8ecae6;
+  --charge-glow:  rgba(6, 214, 160, .45);
+
+  /* Écrans */
+  --screen-glow:      #8ecae6;
+  --screen-phosphor:  rgba(142, 202, 230, .08);
+  --screen-vignette:  radial-gradient(ellipse at 50% 40%, transparent 55%, rgba(0, 0, 0, .45) 100%);
+
   --text:         #edf2f4;
+  --text-dim:     #8fa3b8;
+
+  /* Typographies */
+  --font-display: 'Black Ops One', 'Silkscreen', system-ui, sans-serif;
+  --font-ui:      'Silkscreen', monospace;
+  --font-data:    'VT323', monospace;
+
+  /* Rythme */
+  --radius-shell:  34px;
+  --radius-screen: 14px;
+
+  /* Lumières */
+  --led-on:  #45f0a0;
+  --led-off: #21463a;
+}
+
+/* ------------------------------------------------------------
+   Ambiance de la pièce : la console flotte dans une salle sombre
+   ------------------------------------------------------------ */
+html {
+  min-height: 100%;
 }
 
 body {
-  background: var(--shell);
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px 12px;
+  box-sizing: border-box;
   color: var(--text);
-  font-family: 'Silkscreen', 'VT323', monospace;
+  font-family: var(--font-ui);
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(28, 76, 124, .35), transparent 60%),
+    radial-gradient(ellipse 90% 70% at 50% 115%, rgba(6, 214, 160, .08), transparent 55%),
+    linear-gradient(180deg, #0a0c14 0%, #0d1020 55%, #080a12 100%);
+  background-attachment: fixed;
+  overflow-x: hidden;
+}
+
+/* Grain subtil pour casser les aplats */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: .05;
+  background-image: repeating-conic-gradient(rgba(255, 255, 255, .6) 0% .0001%, transparent .0002% .0004%);
+  mix-blend-mode: overlay;
+}
+
+::selection {
+  background: var(--screen-glow);
+  color: var(--sea-abyss);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001s !important;
+  }
 }
