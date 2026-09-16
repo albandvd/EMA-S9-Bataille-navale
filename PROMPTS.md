@@ -404,3 +404,66 @@ touché, `openapi.yaml` n'a donc pas besoin de mise à jour.
 jouable de bout en bout, vérifié à la fois par test automatisé et par un vrai navigateur. C'est
 le dernier bloquant fonctionnel connu pour la partie solo ; le tir/la résolution de combat n'ont
 pas encore été testés au-delà du démarrage de la bataille (hors périmètre de cette correction).
+
+## Fusion de la branche assets, puis retour visuel de placement (S-04/S-05)
+
+**Décision et justification :** Reprise explicite du point laissé en suspens par l'entrée
+« Annulation de la défense en profondeur front/fake-client » : le binôme avait alors choisi de ne
+*pas* garder la validation de placement (bornes + chevauchement) et son aperçu temps réel tant que
+`Naval.Api` n'existait pas, pour ne pas concevoir cette UX sur une simulation vouée à disparaître.
+`Naval.Api` est désormais mergé et le parcours solo est jouable de bout en bout (entrée
+précédente) : la condition posée pour reprendre ce travail est remplie.
+
+Avant cela, fusion (fast-forward, sans push) de la branche `assets` dans `main` : 23 icônes de
+pouvoirs + 5 sprites de navires (normal/endommagé/coulé) + leurre, en SVG originaux, avec
+`Naval.App.csproj` déjà modifié par cette branche pour les publier sous `wwwroot/assets/` via des
+`<Content Link>`. Rien à ajuster côté build : aucun composant ne les consomme encore (prochaine
+étape de polish visuel), donc pas de risque de régression en les intégrant maintenant.
+
+Contrairement à la tentative annulée, la validation n'est pas dupliquée dans un faux client HTTP :
+`GameApiClient` parle au vrai `Naval.Api`, qui reste la seule autorité à la soumission de
+`PlaceFleetRequest`. Le nouveau code côté front est une **pure aide visuelle**, jamais une source
+de vérité :
+- `ShipTray` expose son navire sélectionné et son orientation via deux événements
+  (`OnSelectionChanged`, `OnOrientationChanged`) au lieu de placer le navire lui-même
+  (`PlaceSelectedAtAsync` est supprimé) ; la page appelante reste seule responsable de la
+  validation géométrique, `ShipTray` ne connaît toujours pas la grille.
+- `GridView`/`GridCell` gagnent un paramètre `Preview` (`bool?` : aucun / valide / refusé) piloté
+  par un nouvel événement de survol (`OnCellHovered`), sans toucher à l'affichage des états de
+  combat existants (miss/hit/sunk…).
+- `Deploy.razor` calcule les cases occupées par le navire survolé (taille lue dans
+  `Store.FleetPreset`), les compare aux bornes de la grille et aux navires déjà retenus localement
+  (`_placements`), et n'appelle `ShipTray.ConfirmPlacement()` qu'après validation — sinon un
+  message d'erreur s'affiche (réutilise la classe `.ds-error-banner` existante) et rien n'est
+  ajouté à `_placements`. Le placement définitif reste soumis d'un bloc au clic sur « Valider la
+  flotte », inchangé.
+
+**Scénario de vérification :** Le SDK .NET 10.0.100 verrouillé par `global.json` manquait sur
+cette machine (seul le 9.0.302 était installé) ; installé via
+`winget install Microsoft.DotNet.SDK.10` (résout en 10.0.401, compatible grâce au
+`rollForward: latestFeature` du `global.json`). Ensuite :
+1. `dotnet build` → 0 avertissement, 0 erreur.
+2. `dotnet test` → 47/47, aucune régression.
+3. `Naval.Api` et `Naval.App` démarrés réellement (`dotnet run`, profils `http`, ports 5119/5018).
+   Parcours Lobby → Deploy vérifié par pilotage direct du DOM (le pane navigateur ne compositait
+   pas d'image dans cet environnement, donc pas de captures d'écran ; vérification par lecture du
+   DOM et dispatch d'événements souris réels plutôt que par coordonnées à l'aveugle) :
+   - Sélection du Carrier (5) → survol de la case (2,2) horizontal → les 5 cases (22 à 26 dans
+     l'ordre de rendu) portent `grid-cell--preview-valid`.
+   - Survol d'une case proche du bord droit (8,0) avec le Carrier → les deux cases encore dans la
+     grille (8 et 9) portent `grid-cell--preview-invalid` ; les cases 10 à 12, hors grille,
+     n'existent simplement pas à afficher (comportement attendu, pas un bug).
+   - Clic sur cette position invalide → bannière d'erreur affichée (« Placement invalide : hors
+     grille ou chevauchement d'un autre navire. ») et le Carrier reste sélectionné dans le tiroir
+     (pas de retrait fantôme).
+   - Clic sur une position valide (0,0 horizontal) → Carrier retiré du tiroir, aucune erreur.
+   - Sélection du Battleship (4), survol d'une case chevauchant le Carrier déjà posé → les 4
+     cases de l'aperçu portent `grid-cell--preview-invalid` (le chevauchement partiel rejette le
+     placement entier, pas seulement les cases en conflit) ; clic → bannière d'erreur, Battleship
+     toujours dans le tiroir.
+4. Serveurs arrêtés proprement après vérification (`Stop-Process` sur les PID liés aux ports
+   5119/5018, confirmé par `Get-NetTCPConnection` ne renvoyant plus rien).
+
+**Résultat observé :** Build et tests verts, comportement conforme à la conception dans les cinq
+scénarios ci-dessus (aperçu valide, aperçu invalide hors grille, refus au clic avec message et
+navire conservé, placement valide accepté, refus par chevauchement). Aucune régression détectée.
