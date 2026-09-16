@@ -14,7 +14,7 @@ public interface IGameApiClient
     Task<GameStateDto> PlaceFleetAsync(Guid gameId, string playerToken, PlaceFleetRequest request, CancellationToken ct);
     Task<ShotResultDto> FireAsync(Guid gameId, string playerToken, FireRequest request, CancellationToken ct);
     Task<PowerResultDto> UsePowerAsync(Guid gameId, string playerToken, UsePowerRequest request, CancellationToken ct);
-    Task<GameStateDto> ForfeitAsync(Guid gameId, string playerToken, CancellationToken ct);
+    Task<GameOverDto> ForfeitAsync(Guid gameId, string playerToken, CancellationToken ct);
     Task<IReadOnlyList<PowerDefinitionDto>> GetPowerCatalogAsync(CancellationToken ct);
     Task<FleetPresetDto> GetFleetPresetAsync(string presetName, CancellationToken ct);
 }

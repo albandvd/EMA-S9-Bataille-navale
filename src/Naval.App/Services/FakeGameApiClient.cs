@@ -162,11 +162,19 @@ public sealed class FakeGameApiClient : IGameApiClient
             [], 2, [], "Sonar : 2 cases occupées détectées.", _game.Self.PlayerId, false, null));
     }
 
-    public Task<GameStateDto> ForfeitAsync(Guid gameId, string playerToken, CancellationToken ct)
+    public Task<GameOverDto> ForfeitAsync(Guid gameId, string playerToken, CancellationToken ct)
     {
         EnsureGame(gameId);
-        _game = _game! with { Status = GameStatus.Abandoned, WinnerId = _game.Opponent.PlayerId };
-        return Task.FromResult(_game);
+        var winnerId = _game!.Opponent.PlayerId;
+        _game = _game with { Status = GameStatus.Abandoned, WinnerId = winnerId };
+
+        return Task.FromResult(new GameOverDto(gameId, winnerId, _game.Opponent.Name, "Forfeit",
+            _game.TurnNumber,
+            [
+                new PlayerStatsDto(_game.Self.PlayerId, _game.Self.Name, _shotCounter, _hitCounter,
+                    _shotCounter == 0 ? 0 : (double)_hitCounter / _shotCounter, 0, 0),
+                new PlayerStatsDto(winnerId, _game.Opponent.Name, 0, 0, 0, 0, 0)
+            ]));
     }
 
     public Task<IReadOnlyList<PowerDefinitionDto>> GetPowerCatalogAsync(CancellationToken ct) =>
