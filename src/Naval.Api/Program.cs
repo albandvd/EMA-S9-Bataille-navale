@@ -25,7 +25,7 @@ builder.Services.AddOpenApi();
 
 // ── CORS ──
 builder.Services.AddCors(o => o.AddPolicy("app", p => p
-    .WithOrigins(builder.Configuration["Cors:AppOrigin"] ?? "https://localhost:7002")
+    .WithOrigins(builder.Configuration["Cors:AppOrigin"] ?? "http://localhost:5018")
     .AllowAnyHeader()
     .AllowAnyMethod()
     .AllowCredentials()));

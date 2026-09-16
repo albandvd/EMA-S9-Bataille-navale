@@ -86,8 +86,8 @@ Lis ces fichiers avant de concevoir quoi que ce soit dans leur domaine :
 dotnet build                                   # compile tout
 dotnet test                                    # tous les tests
 dotnet test --filter FullyQualifiedName~Powers # tests des pouvoirs
-dotnet run --project src/Naval.Api             # API sur https://localhost:7001
-dotnet run --project src/Naval.App             # front sur https://localhost:7002
+dotnet run --project src/Naval.Api             # API sur http://localhost:5119
+dotnet run --project src/Naval.App             # front sur http://localhost:5018
 dotnet format                                  # mise en forme
 ```
 

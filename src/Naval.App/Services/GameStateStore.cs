@@ -71,7 +71,8 @@ public sealed class GameStateStore(IGameApiClient api)
     public Task ForfeitAsync() => RunAsync(async () =>
     {
         EnsureGameLoaded();
-        CurrentGame = await api.ForfeitAsync(CurrentGame!.GameId, _playerToken, CancellationToken.None);
+        await api.ForfeitAsync(CurrentGame!.GameId, _playerToken, CancellationToken.None);
+        CurrentGame = await api.GetGameAsync(CurrentGame.GameId, _playerToken, CancellationToken.None);
     });
 
     private void EnsureGameLoaded()
