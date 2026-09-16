@@ -1,0 +1,26 @@
+@using Naval.Shared.Contracts
+
+@if (Problem is not null)
+{
+    <div class="ds-error-banner" role="alert">
+        @GetMessage(Problem.Code)
+    </div>
+}
+
+@code {
+    [Parameter] public ApiProblemDto? Problem { get; set; }
+
+    private static string GetMessage(string code) => code switch
+    {
+        ErrorCodes.NotYourTurn => "Ce n'est pas votre tour.",
+        ErrorCodes.CellAlreadyTargeted => "Cette case a déjà été visée.",
+        ErrorCodes.InsufficientEnergy => "Énergie insuffisante pour ce pouvoir.",
+        ErrorCodes.PowerOnCooldown => "Ce pouvoir est en recharge.",
+        ErrorCodes.PowerExhausted => "Ce pouvoir n'a plus de charge disponible.",
+        ErrorCodes.InvalidTarget => "Cible invalide pour cette action.",
+        ErrorCodes.CarrierRequired => "Ce pouvoir nécessite un navire porteur.",
+        ErrorCodes.GameNotInProgress => "La partie n'est pas en cours.",
+        ErrorCodes.GameNotFound => "Cette partie n'existe pas ou plus.",
+        _ => "Une erreur est survenue."
+    };
+}

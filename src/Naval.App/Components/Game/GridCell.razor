@@ -1,0 +1,28 @@
+<div class="grid-cell @CssClass" @onclick="HandleClick" role="button" aria-label="@AriaLabel">
+</div>
+
+@code {
+    [Parameter] public char State { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    private string CssClass => State switch
+    {
+        '.' => "grid-cell--unknown",
+        'o' => "grid-cell--miss",
+        'x' => "grid-cell--hit",
+        '#' => "grid-cell--sunk",
+        '~' => "grid-cell--revealed-empty",
+        '?' => "grid-cell--revealed-occupied",
+        'f' => "grid-cell--fogged",
+        'S' => "grid-cell--ship",
+        'X' => "grid-cell--ship-hit",
+        'D' => "grid-cell--decoy",
+        'M' => "grid-cell--mine",
+        'B' => "grid-cell--shielded",
+        _ => "grid-cell--unknown"
+    };
+
+    private string AriaLabel => CssClass.Replace("grid-cell--", string.Empty).Replace('-', ' ');
+
+    private Task HandleClick() => OnClick.HasDelegate ? OnClick.InvokeAsync() : Task.CompletedTask;
+}

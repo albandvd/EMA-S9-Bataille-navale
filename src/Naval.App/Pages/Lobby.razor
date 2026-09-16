@@ -1,0 +1,60 @@
+@page "/lobby"
+@inject GameStateStore Store
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<DsConsole>
+    <TopScreen>
+        <DsTopScreen>
+            <h2>Configurer la partie</h2>
+            <DsErrorBanner Problem="Store.LastError" />
+        </DsTopScreen>
+    </TopScreen>
+    <BottomScreen>
+        <DsBottomScreen>
+            <div class="ds-form">
+                <label class="ds-field">
+                    <span class="ds-field__label">Pseudo</span>
+                    <input class="ds-field__control" @bind="_playerName" placeholder="Joueur" />
+                </label>
+                <label class="ds-field">
+                    <span class="ds-field__label">Taille de grille</span>
+                    <input class="ds-field__control" type="number" @bind="_gridSize" min="8" max="16" />
+                </label>
+                <label class="ds-field">
+                    <span class="ds-field__label">Flotte</span>
+                    <select class="ds-field__control" @bind="_fleetPreset">
+                        <option value="Classic">Classic</option>
+                        <option value="Skirmish">Skirmish</option>
+                    </select>
+                </label>
+                <DsButton Label="Démarrer" OnClick="StartGame" />
+            </div>
+        </DsBottomScreen>
+    </BottomScreen>
+</DsConsole>
+
+@code {
+    private string _playerName = "Joueur";
+    private int _gridSize = 10;
+    private string _fleetPreset = "Classic";
+
+    protected override void OnInitialized() => Store.StateChanged += OnStoreChanged;
+
+    private async Task StartGame()
+    {
+        var request = new CreateGameRequest(_playerName, GameMode.SinglePlayer, _gridSize, _gridSize,
+            _fleetPreset, AiLevel.Random, [], 0, null);
+        await Store.CreateGameAsync(request);
+
+        if (Store.CurrentGame is not null)
+        {
+            await Store.LoadFleetPresetAsync(_fleetPreset);
+            Navigation.NavigateTo("/deploy");
+        }
+    }
+
+    private void OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Store.StateChanged -= OnStoreChanged;
+}

@@ -1,0 +1,87 @@
+@page "/deploy"
+@inject GameStateStore Store
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<DsConsole>
+    <TopScreen>
+        <DsTopScreen>
+            <h2>Votre grille</h2>
+            @if (Store.CurrentGame is { } game)
+            {
+                <GridView Board="game.Self.Board" OnCellClicked="HandleCellClicked" />
+            }
+        </DsTopScreen>
+    </TopScreen>
+    <BottomScreen>
+        <DsBottomScreen>
+            <DsErrorBanner Problem="Store.LastError" />
+            @if (Store.CurrentGame is not null)
+            {
+                <ShipTray @ref="_shipTray" Fleet="_fleetToPlace" OnShipPlaced="HandleShipPlaced" />
+            }
+            <DsButton Label="Valider la flotte" OnClick="ConfirmFleet" />
+        </DsBottomScreen>
+    </BottomScreen>
+</DsConsole>
+
+@code {
+    private ShipTray? _shipTray;
+    private readonly List<ShipPlacementDto> _placements = [];
+    private IReadOnlyList<ShipStateDto> _fleetToPlace = [];
+
+    protected override void OnInitialized()
+    {
+        Store.StateChanged += OnStoreChanged;
+        if (Store.CurrentGame is null)
+        {
+            Navigation.NavigateTo("/lobby");
+            return;
+        }
+
+        _fleetToPlace = BuildFleetToPlace();
+    }
+
+    /// <summary>
+    /// Étend le preset de flotte (un navire par type avec un décompte) en une liste plate de
+    /// navires encore à placer, pour satisfaire le paramètre Fleet de ShipTray sans lui faire
+    /// connaître la notion de preset.
+    /// </summary>
+    private IReadOnlyList<ShipStateDto> BuildFleetToPlace()
+    {
+        if (Store.FleetPreset is not { } preset)
+        {
+            return [];
+        }
+
+        var ships = new List<ShipStateDto>();
+        foreach (var shipDefinition in preset.Ships)
+        {
+            for (var i = 0; i < shipDefinition.Count; i++)
+            {
+                ships.Add(new ShipStateDto($"{shipDefinition.Type}-{i}", shipDefinition.Type,
+                    shipDefinition.Size, 0, false, null));
+            }
+        }
+
+        return ships;
+    }
+
+    private Task HandleCellClicked(CoordinateDto coordinate) =>
+        _shipTray?.PlaceSelectedAtAsync(coordinate) ?? Task.CompletedTask;
+
+    private void HandleShipPlaced(ShipPlacementDto placement) => _placements.Add(placement);
+
+    private async Task ConfirmFleet()
+    {
+        await Store.PlaceFleetAsync(new PlaceFleetRequest(_placements));
+        if (Store.CurrentGame?.Status == GameStatus.InProgress)
+        {
+            Navigation.NavigateTo("/battle");
+        }
+    }
+
+    private void OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Store.StateChanged -= OnStoreChanged;
+}

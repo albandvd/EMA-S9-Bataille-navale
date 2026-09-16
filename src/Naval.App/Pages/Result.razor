@@ -1,0 +1,31 @@
+@page "/result"
+@inject GameStateStore Store
+@inject NavigationManager Navigation
+
+<DsConsole>
+    <TopScreen>
+        <DsTopScreen>
+            @if (Store.CurrentGame is { WinnerId: { } winnerId } game)
+            {
+                <h2>@(winnerId == game.Self.PlayerId ? "Victoire" : "Défaite")</h2>
+            }
+        </DsTopScreen>
+    </TopScreen>
+    <BottomScreen>
+        <DsBottomScreen>
+            <DsButton Label="Rejouer" OnClick="GoToLobby" />
+        </DsBottomScreen>
+    </BottomScreen>
+</DsConsole>
+
+@code {
+    protected override void OnInitialized()
+    {
+        if (Store.CurrentGame is null)
+        {
+            Navigation.NavigateTo("/lobby");
+        }
+    }
+
+    private void GoToLobby() => Navigation.NavigateTo("/lobby");
+}

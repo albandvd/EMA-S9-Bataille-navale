@@ -1,0 +1,21 @@
+@if (Charge.IsCharging)
+{
+    <div class="charge-meter" role="status">
+        @if (Charge.RevealedPowerId is { } powerId)
+        {
+            <span>Pouvoir adverse : @powerId (@Charge.TurnsRemaining tours)</span>
+        }
+        else
+        {
+            <span>L'adversaire charge un pouvoir inconnu (@Charge.TurnsRemaining tours)</span>
+        }
+        @if (Charge.RevealedColumn is { } column)
+        {
+            <span>Colonne révélée : @column</span>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public OpponentChargeDto Charge { get; set; } = null!;
+}

@@ -1,0 +1,23 @@
+.grid-view {
+    display: grid;
+    gap: 2px;
+}
+
+.grid-cell {
+    aspect-ratio: 1;
+    border: 1px solid rgba(255, 255, 255, .06);
+    cursor: pointer;
+}
+
+.grid-cell--unknown { background: var(--sea-deep); }
+.grid-cell--miss { background: var(--sea); }
+.grid-cell--hit { background: var(--hit); }
+.grid-cell--sunk { background: var(--sunk); }
+.grid-cell--revealed-empty { background: var(--sea-light); }
+.grid-cell--revealed-occupied { outline: 2px solid var(--screen-glow); }
+.grid-cell--fogged { backdrop-filter: blur(3px); background: rgba(255, 255, 255, .1); }
+.grid-cell--ship { background: var(--hull); }
+.grid-cell--ship-hit { background: var(--hit); }
+.grid-cell--decoy { background: var(--hull-dark); opacity: .6; }
+.grid-cell--mine { background: var(--energy); }
+.grid-cell--shielded { outline: 2px solid var(--charge); }

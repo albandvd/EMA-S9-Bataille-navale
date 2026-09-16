@@ -1,0 +1,19 @@
+@page "/"
+@inject NavigationManager Navigation
+
+<DsConsole>
+    <TopScreen>
+        <DsTopScreen>
+            <h1>Bataille Navale</h1>
+        </DsTopScreen>
+    </TopScreen>
+    <BottomScreen>
+        <DsBottomScreen>
+            <DsButton Label="Nouvelle partie" OnClick="GoToLobby" />
+        </DsBottomScreen>
+    </BottomScreen>
+</DsConsole>
+
+@code {
+    private void GoToLobby() => Navigation.NavigateTo("/lobby");
+}

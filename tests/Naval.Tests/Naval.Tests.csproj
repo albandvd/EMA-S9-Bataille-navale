@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Naval.Shared\Naval.Shared.csproj" />
+    <ProjectReference Include="..\..\src\Naval.App\Naval.App.csproj" />
     <ProjectReference Include="..\..\src\Naval.Api\Naval.Api.csproj" />
   </ItemGroup>
 

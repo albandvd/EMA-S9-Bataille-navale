@@ -1,0 +1,9 @@
+<button class="ds-button" disabled="@Disabled" @onclick="OnClick">
+    @Label
+</button>
+
+@code {
+    [Parameter, EditorRequired] public string Label { get; set; } = string.Empty;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+}

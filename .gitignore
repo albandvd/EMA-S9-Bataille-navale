@@ -44,3 +44,7 @@ appsettings.*.json
 # Logs
 *.log
 logs/
+
+## Worktrees (scratch, native tooling)
+.worktrees/
+.claude/worktrees/
