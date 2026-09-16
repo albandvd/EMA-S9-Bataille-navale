@@ -1,9 +1,14 @@
-<div class="grid-cell @CssClass" @onclick="HandleClick" role="button" aria-label="@AriaLabel">
+<div class="grid-cell @CssClass @PreviewCssClass" @onclick="HandleClick" @onmouseenter="HandleMouseEnter" role="button" aria-label="@AriaLabel">
 </div>
 
 @code {
     [Parameter] public char State { get; set; }
+
+    /// <summary>Aperçu de placement sur cette case : null = aucun, true = valide, false = refusé.</summary>
+    [Parameter] public bool? Preview { get; set; }
+
     [Parameter] public EventCallback OnClick { get; set; }
+    [Parameter] public EventCallback OnHoverEnter { get; set; }
 
     private string CssClass => State switch
     {
@@ -22,7 +27,15 @@
         _ => "grid-cell--unknown"
     };
 
+    private string PreviewCssClass => Preview switch
+    {
+        true => "grid-cell--preview-valid",
+        false => "grid-cell--preview-invalid",
+        null => string.Empty
+    };
+
     private string AriaLabel => CssClass.Replace("grid-cell--", string.Empty).Replace('-', ' ');
 
     private Task HandleClick() => OnClick.HasDelegate ? OnClick.InvokeAsync() : Task.CompletedTask;
+    private Task HandleMouseEnter() => OnHoverEnter.HasDelegate ? OnHoverEnter.InvokeAsync() : Task.CompletedTask;
 }

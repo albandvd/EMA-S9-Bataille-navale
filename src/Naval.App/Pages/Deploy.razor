@@ -9,16 +9,26 @@
             <h2>Votre grille</h2>
             @if (Store.CurrentGame is { } game)
             {
-                <GridView Board="game.Self.Board" OnCellClicked="HandleCellClicked" />
+                <GridView Board="game.Self.Board"
+                          OnCellClicked="HandleCellClicked"
+                          OnCellHovered="HandleCellHovered"
+                          PreviewCells="_previewCells"
+                          PreviewValid="_previewValid" />
             }
         </DsTopScreen>
     </TopScreen>
     <BottomScreen>
         <DsBottomScreen>
             <DsErrorBanner Problem="Store.LastError" />
+            @if (_placementError is not null)
+            {
+                <p class="ds-error-banner" role="alert">@_placementError</p>
+            }
             @if (Store.CurrentGame is not null)
             {
-                <ShipTray @ref="_shipTray" Fleet="_fleetToPlace" OnShipPlaced="HandleShipPlaced" />
+                <ShipTray @ref="_shipTray" Fleet="_fleetToPlace"
+                          OnSelectionChanged="HandleSelectionChanged"
+                          OnOrientationChanged="HandleOrientationChanged" />
             }
             <DsButton Label="Valider la flotte" OnClick="ConfirmFleet" />
         </DsBottomScreen>
@@ -29,6 +39,15 @@
     private ShipTray? _shipTray;
     private readonly List<ShipPlacementDto> _placements = [];
     private IReadOnlyList<ShipStateDto> _fleetToPlace = [];
+    private Dictionary<ShipType, int> _shipSizes = [];
+
+    private ShipStateDto? _selectedShip;
+    private Orientation _orientation = Orientation.Horizontal;
+    private CoordinateDto? _hoveredCell;
+    private string? _placementError;
+
+    private HashSet<CoordinateDto>? _previewCells;
+    private bool _previewValid;
 
     protected override void OnInitialized()
     {
@@ -40,6 +59,8 @@
         }
 
         _fleetToPlace = BuildFleetToPlace();
+        _shipSizes = Store.FleetPreset?.Ships.ToDictionary(s => s.Type, s => s.Size)
+            ?? [];
     }
 
     /// <summary>
@@ -67,10 +88,79 @@
         return ships;
     }
 
-    private Task HandleCellClicked(CoordinateDto coordinate) =>
-        _shipTray?.PlaceSelectedAtAsync(coordinate) ?? Task.CompletedTask;
+    private void HandleSelectionChanged(ShipStateDto? ship)
+    {
+        _selectedShip = ship;
+        _placementError = null;
+        UpdatePreview();
+    }
 
-    private void HandleShipPlaced(ShipPlacementDto placement) => _placements.Add(placement);
+    private void HandleOrientationChanged(Orientation orientation)
+    {
+        _orientation = orientation;
+        UpdatePreview();
+    }
+
+    private void HandleCellHovered(CoordinateDto? coordinate)
+    {
+        _hoveredCell = coordinate;
+        UpdatePreview();
+    }
+
+    private void UpdatePreview()
+    {
+        if (_selectedShip is not { } ship || _hoveredCell is not { } origin || Store.CurrentGame is not { } game)
+        {
+            _previewCells = null;
+            return;
+        }
+
+        var cells = ExpandCells(ship.Type, origin, _orientation).ToHashSet();
+        _previewCells = cells;
+        _previewValid = IsValidPlacement(cells, game.Self.Board.Width, game.Self.Board.Height);
+    }
+
+    private IEnumerable<CoordinateDto> ExpandCells(ShipType type, CoordinateDto origin, Orientation orientation)
+    {
+        var size = _shipSizes.GetValueOrDefault(type, 1);
+        for (var i = 0; i < size; i++)
+        {
+            yield return orientation == Orientation.Horizontal
+                ? new CoordinateDto(origin.X + i, origin.Y)
+                : new CoordinateDto(origin.X, origin.Y + i);
+        }
+    }
+
+    private bool IsValidPlacement(IReadOnlyCollection<CoordinateDto> cells, int width, int height)
+    {
+        var occupied = OccupiedCells();
+        return cells.All(c => c.X >= 0 && c.X < width && c.Y >= 0 && c.Y < height)
+            && cells.All(c => !occupied.Contains(c));
+    }
+
+    private HashSet<CoordinateDto> OccupiedCells() =>
+        _placements.SelectMany(p => ExpandCells(p.Type, p.Origin, p.Orientation)).ToHashSet();
+
+    private void HandleCellClicked(CoordinateDto coordinate)
+    {
+        if (_selectedShip is not { } ship || Store.CurrentGame is not { } game)
+        {
+            return;
+        }
+
+        var cells = ExpandCells(ship.Type, coordinate, _orientation).ToList();
+        if (!IsValidPlacement(cells, game.Self.Board.Width, game.Self.Board.Height))
+        {
+            _placementError = "Placement invalide : hors grille ou chevauchement d'un autre navire.";
+            return;
+        }
+
+        _placements.Add(new ShipPlacementDto(ship.Type, coordinate, _orientation));
+        _shipTray?.ConfirmPlacement();
+        _selectedShip = null;
+        _placementError = null;
+        _previewCells = null;
+    }
 
     private async Task ConfirmFleet()
     {

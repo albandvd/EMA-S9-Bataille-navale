@@ -7,6 +7,7 @@
     aspect-ratio: 1;
     border: 1px solid rgba(255, 255, 255, .06);
     cursor: pointer;
+    transition: outline-color .1s ease, background-color .1s ease;
 }
 
 .grid-cell--unknown { background: var(--sea-deep); }
@@ -21,3 +22,15 @@
 .grid-cell--decoy { background: var(--hull-dark); opacity: .6; }
 .grid-cell--mine { background: var(--energy); }
 .grid-cell--shielded { outline: 2px solid var(--charge); }
+
+.grid-cell--preview-valid {
+    outline: 2px solid var(--charge);
+    outline-offset: -2px;
+    background: rgba(6, 214, 160, .25);
+}
+
+.grid-cell--preview-invalid {
+    outline: 2px solid var(--hit);
+    outline-offset: -2px;
+    background: rgba(239, 35, 60, .25);
+}

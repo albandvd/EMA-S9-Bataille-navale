@@ -1,4 +1,4 @@
-<div class="grid-view" style="grid-template-columns: repeat(@Board.Width, 1fr);">
+<div class="grid-view" style="grid-template-columns: repeat(@Board.Width, 1fr);" @onmouseleave="HandleGridLeave">
     @for (var y = 0; y < Board.Rows.Count; y++)
     {
         var row = Board.Rows[y];
@@ -6,7 +6,10 @@
         {
             var coordinate = new CoordinateDto(x, y);
             var state = row[x];
-            <GridCell State="state" OnClick="() => HandleCellClicked(coordinate)" />
+            <GridCell State="state"
+                      Preview="GetPreviewState(coordinate)"
+                      OnClick="() => HandleCellClicked(coordinate)"
+                      OnHoverEnter="() => HandleHoverEnter(coordinate)" />
         }
     }
 </div>
@@ -15,6 +18,22 @@
     [Parameter, EditorRequired] public BoardViewDto Board { get; set; } = null!;
     [Parameter] public EventCallback<CoordinateDto> OnCellClicked { get; set; }
 
+    /// <summary>Notifie la case survolée (null quand le curseur quitte la grille).</summary>
+    [Parameter] public EventCallback<CoordinateDto?> OnCellHovered { get; set; }
+
+    /// <summary>Cases à surligner comme aperçu de placement, avec leur validité commune.</summary>
+    [Parameter] public IReadOnlySet<CoordinateDto>? PreviewCells { get; set; }
+    [Parameter] public bool PreviewValid { get; set; }
+
     private Task HandleCellClicked(CoordinateDto coordinate) =>
         OnCellClicked.HasDelegate ? OnCellClicked.InvokeAsync(coordinate) : Task.CompletedTask;
+
+    private Task HandleHoverEnter(CoordinateDto coordinate) =>
+        OnCellHovered.HasDelegate ? OnCellHovered.InvokeAsync(coordinate) : Task.CompletedTask;
+
+    private Task HandleGridLeave() =>
+        OnCellHovered.HasDelegate ? OnCellHovered.InvokeAsync(null) : Task.CompletedTask;
+
+    private bool? GetPreviewState(CoordinateDto coordinate) =>
+        PreviewCells is { Count: > 0 } cells && cells.Contains(coordinate) ? PreviewValid : null;
 }
