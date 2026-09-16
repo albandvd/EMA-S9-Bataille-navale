@@ -5,11 +5,14 @@ question toute prête pour le correcteur.
 
 ## Graphismes
 
-- <!-- ex. Sprites de navires — Kenney (kenney.nl), CC0 1.0 — modifiés (recoloration) -->
+- Sprites de navires (`assets/sprites/ships/*.svg`, 5 navires × normal/endommagé/coulé + leurre)
+  — création originale (généré avec Claude Code), palette `tokens.css`. Aucune attribution requise.
 
 ## Icônes
 
-- <!-- ex. sonar.svg — Lorc, game-icons.net, CC BY 3.0 — https://game-icons.net/1x1/lorc/radar-sweep.html -->
+- Icônes de pouvoirs (`assets/icons/powers/*.svg`, 23 fichiers, un par `PowerId`)
+  — création originale (généré avec Claude Code), trait monochrome colorable via `currentColor`.
+  Aucune attribution requise.
 
 ## Polices
 
