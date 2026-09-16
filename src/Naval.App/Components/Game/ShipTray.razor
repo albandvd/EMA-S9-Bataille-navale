@@ -1,9 +1,14 @@
+@inject AudioService Audio
+
 <div class="ship-tray">
     @foreach (var ship in Fleet.Where(s => !_placedIds.Contains(s.Id)))
     {
         <div class="ship-tray__item @(ship == _selected ? "ship-tray__item--selected" : "")"
              @onclick="() => Select(ship)">
-            @ship.Type (@ship.Size)
+            <span class="ship-tray__name">@ship.Type</span>
+            <img class="ship-tray__sprite"
+                 src="assets/sprites/ships/@(ship.Type.ToString().ToLowerInvariant()).svg"
+                 alt="@ship.Size cases" />
         </div>
     }
     <button class="ship-tray__rotate ds-button" @onclick="ToggleOrientation">
@@ -22,6 +27,7 @@
 
     private async Task Select(ShipStateDto ship)
     {
+        Audio.Play("ui-move");
         _selected = ship;
         if (OnSelectionChanged.HasDelegate)
         {
@@ -31,6 +37,7 @@
 
     private async Task ToggleOrientation()
     {
+        Audio.Play("ui-back");
         _orientation = _orientation == Orientation.Horizontal ? Orientation.Vertical : Orientation.Horizontal;
         if (OnOrientationChanged.HasDelegate)
         {
