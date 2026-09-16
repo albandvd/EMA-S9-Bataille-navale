@@ -1,11 +1,50 @@
-## .NET
+# Build
 bin/
 obj/
+out/
+
+# Rider / Visual Studio / VS Code
+.idea/
+.vs/
 *.user
+*.suo
+*.userprefs
+*.pidb
+.vscode/
+
+# .NET
+*.dll
+*.exe
+*.pdb
+*.nupkg
+*.snupkg
+project.lock.json
+
+# Test results
+TestResults/
+*.trx
+*.coverage
+
+# Publish
+publish/
+wwwroot/dist/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Secrets & env
+appsettings.*.json
+!appsettings.Development.json
+*.pfx
+*.key
+.env
+
+# Logs
+*.log
+logs/
 
 ## Worktrees (scratch, native tooling)
 .worktrees/
 .claude/worktrees/
-
-## OS
-.DS_Store
