@@ -70,6 +70,7 @@ public sealed class GameService
             var aiPlacements = GameEngine.GenerateRandomPlacement(preset, req.GridWidth, req.GridHeight, rng);
             var (aiFleet, _) = GameEngine.ValidateAndBuildFleet(aiPlacements, preset, req.GridWidth, req.GridHeight, "ai");
             p2.Fleet = aiFleet;
+            p2.IsReady = true;
         }
 
         await _store.SaveAsync(game, ct);
