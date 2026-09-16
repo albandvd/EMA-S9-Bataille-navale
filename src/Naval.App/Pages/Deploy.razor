@@ -1,6 +1,7 @@
 @page "/deploy"
 @inject GameStateStore Store
 @inject NavigationManager Navigation
+@inject AudioService Audio
 @implements IDisposable
 
 <DsConsole>
@@ -9,11 +10,12 @@
             <h2>Votre grille</h2>
             @if (Store.CurrentGame is { } game)
             {
-                <GridView Board="game.Self.Board"
+                <GridView Board="BuildDisplayBoard(game.Self.Board)"
                           OnCellClicked="HandleCellClicked"
                           OnCellHovered="HandleCellHovered"
                           PreviewCells="_previewCells"
-                          PreviewValid="_previewValid" />
+                          PreviewValid="_previewValid"
+                          ShipSprites="BuildShipSprites()" />
             }
         </DsTopScreen>
     </TopScreen>
@@ -141,7 +143,46 @@
     private HashSet<CoordinateDto> OccupiedCells() =>
         _placements.SelectMany(p => ExpandCells(p.Type, p.Origin, p.Orientation)).ToHashSet();
 
-    private void HandleCellClicked(CoordinateDto coordinate)
+    /// <summary>Sprites des navires déjà posés, pour l'overlay décoratif de la grille.</summary>
+    private IReadOnlyList<GridView.ShipSpriteOverlay> BuildShipSprites() =>
+        _placements
+            .Select(p => new GridView.ShipSpriteOverlay(
+                p.Type, p.Origin, p.Orientation == Orientation.Vertical,
+                _shipSizes.GetValueOrDefault(p.Type, 1), ""))
+            .ToList();
+
+    /// <summary>
+    /// Superpose les navires déjà posés (encore locaux à la page) sur la grille renvoyée par le
+    /// serveur, qui ne les connaît pas avant la validation de la flotte. Affichage uniquement :
+    /// les placements ne partent au serveur qu'au moment de ConfirmFleet.
+    /// </summary>
+    private BoardViewDto BuildDisplayBoard(BoardViewDto board)
+    {
+        var occupied = OccupiedCells();
+        if (occupied.Count == 0)
+        {
+            return board;
+        }
+
+        var rows = new List<string>(board.Rows.Count);
+        for (var y = 0; y < board.Rows.Count; y++)
+        {
+            var chars = board.Rows[y].ToCharArray();
+            for (var x = 0; x < chars.Length; x++)
+            {
+                if (occupied.Contains(new CoordinateDto(x, y)))
+                {
+                    chars[x] = 'S';
+                }
+            }
+
+            rows.Add(new string(chars));
+        }
+
+        return board with { Rows = rows };
+    }
+
+    private async Task HandleCellClicked(CoordinateDto coordinate)
     {
         if (_selectedShip is not { } ship || Store.CurrentGame is not { } game)
         {
@@ -152,9 +193,11 @@
         if (!IsValidPlacement(cells, game.Self.Board.Width, game.Self.Board.Height))
         {
             _placementError = "Placement invalide : hors grille ou chevauchement d'un autre navire.";
+            Audio.Play("deny");
             return;
         }
 
+        Audio.Play("ui-select");
         _placements.Add(new ShipPlacementDto(ship.Type, coordinate, _orientation));
         _shipTray?.ConfirmPlacement();
         _selectedShip = null;
