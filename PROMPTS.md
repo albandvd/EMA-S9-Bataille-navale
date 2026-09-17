@@ -478,3 +478,206 @@ vérifié : changer `.env` seul (sans rebuild) suffit à repointer le déploieme
 hôtes. Non couvert volontairement, documenté dans `infra/docker/README.md` : pas de
 persistance (cohérent avec `IGameStore` en mémoire tant que `E-27` n'est pas demandée), pas de
 TLS (à terminer en amont par un reverse proxy en prod), pas de pipeline CI.
+## Fusion de la branche assets, puis retour visuel de placement (S-04/S-05)
+
+**Décision et justification :** Reprise explicite du point laissé en suspens par l'entrée
+« Annulation de la défense en profondeur front/fake-client » : le binôme avait alors choisi de ne
+*pas* garder la validation de placement (bornes + chevauchement) et son aperçu temps réel tant que
+`Naval.Api` n'existait pas, pour ne pas concevoir cette UX sur une simulation vouée à disparaître.
+`Naval.Api` est désormais mergé et le parcours solo est jouable de bout en bout (entrée
+précédente) : la condition posée pour reprendre ce travail est remplie.
+
+Avant cela, fusion (fast-forward, sans push) de la branche `assets` dans `main` : 23 icônes de
+pouvoirs + 5 sprites de navires (normal/endommagé/coulé) + leurre, en SVG originaux, avec
+`Naval.App.csproj` déjà modifié par cette branche pour les publier sous `wwwroot/assets/` via des
+`<Content Link>`. Rien à ajuster côté build : aucun composant ne les consomme encore (prochaine
+étape de polish visuel), donc pas de risque de régression en les intégrant maintenant.
+
+Contrairement à la tentative annulée, la validation n'est pas dupliquée dans un faux client HTTP :
+`GameApiClient` parle au vrai `Naval.Api`, qui reste la seule autorité à la soumission de
+`PlaceFleetRequest`. Le nouveau code côté front est une **pure aide visuelle**, jamais une source
+de vérité :
+- `ShipTray` expose son navire sélectionné et son orientation via deux événements
+  (`OnSelectionChanged`, `OnOrientationChanged`) au lieu de placer le navire lui-même
+  (`PlaceSelectedAtAsync` est supprimé) ; la page appelante reste seule responsable de la
+  validation géométrique, `ShipTray` ne connaît toujours pas la grille.
+- `GridView`/`GridCell` gagnent un paramètre `Preview` (`bool?` : aucun / valide / refusé) piloté
+  par un nouvel événement de survol (`OnCellHovered`), sans toucher à l'affichage des états de
+  combat existants (miss/hit/sunk…).
+- `Deploy.razor` calcule les cases occupées par le navire survolé (taille lue dans
+  `Store.FleetPreset`), les compare aux bornes de la grille et aux navires déjà retenus localement
+  (`_placements`), et n'appelle `ShipTray.ConfirmPlacement()` qu'après validation — sinon un
+  message d'erreur s'affiche (réutilise la classe `.ds-error-banner` existante) et rien n'est
+  ajouté à `_placements`. Le placement définitif reste soumis d'un bloc au clic sur « Valider la
+  flotte », inchangé.
+
+**Scénario de vérification :** Le SDK .NET 10.0.100 verrouillé par `global.json` manquait sur
+cette machine (seul le 9.0.302 était installé) ; installé via
+`winget install Microsoft.DotNet.SDK.10` (résout en 10.0.401, compatible grâce au
+`rollForward: latestFeature` du `global.json`). Ensuite :
+1. `dotnet build` → 0 avertissement, 0 erreur.
+2. `dotnet test` → 47/47, aucune régression.
+3. `Naval.Api` et `Naval.App` démarrés réellement (`dotnet run`, profils `http`, ports 5119/5018).
+   Parcours Lobby → Deploy vérifié par pilotage direct du DOM (le pane navigateur ne compositait
+   pas d'image dans cet environnement, donc pas de captures d'écran ; vérification par lecture du
+   DOM et dispatch d'événements souris réels plutôt que par coordonnées à l'aveugle) :
+   - Sélection du Carrier (5) → survol de la case (2,2) horizontal → les 5 cases (22 à 26 dans
+     l'ordre de rendu) portent `grid-cell--preview-valid`.
+   - Survol d'une case proche du bord droit (8,0) avec le Carrier → les deux cases encore dans la
+     grille (8 et 9) portent `grid-cell--preview-invalid` ; les cases 10 à 12, hors grille,
+     n'existent simplement pas à afficher (comportement attendu, pas un bug).
+   - Clic sur cette position invalide → bannière d'erreur affichée (« Placement invalide : hors
+     grille ou chevauchement d'un autre navire. ») et le Carrier reste sélectionné dans le tiroir
+     (pas de retrait fantôme).
+   - Clic sur une position valide (0,0 horizontal) → Carrier retiré du tiroir, aucune erreur.
+   - Sélection du Battleship (4), survol d'une case chevauchant le Carrier déjà posé → les 4
+     cases de l'aperçu portent `grid-cell--preview-invalid` (le chevauchement partiel rejette le
+     placement entier, pas seulement les cases en conflit) ; clic → bannière d'erreur, Battleship
+     toujours dans le tiroir.
+4. Serveurs arrêtés proprement après vérification (`Stop-Process` sur les PID liés aux ports
+   5119/5018, confirmé par `Get-NetTCPConnection` ne renvoyant plus rien).
+
+**Résultat observé :** Build et tests verts, comportement conforme à la conception dans les cinq
+scénarios ci-dessus (aperçu valide, aperçu invalide hors grille, refus au clic avec message et
+navire conservé, placement valide accepté, refus par chevauchement). Aucune régression détectée.
+
+## Refonte visuelle « Navcom » : la console deux écrans en CSS pur
+
+**Prompt :** « Montre-moi l'étendue de tes capacités en matière d'UI. Ta mission est de
+repousser les limites du design d'interface. » (Session exploratoire sur la branche `ui` :
+l'utilisateur avait demandé de ne rien commiter ni documenter pendant le test ; le travail a
+été conservé, commité par lui, et ces entrées formalisent a posteriori les décisions prises.)
+
+**Décision et justification :** Application stricte du principe « CSS d'abord » de
+`docs/04-assets.md` §2 : toute la refonte de ce commit se fait **sans un seul fichier image
+ajouté**. La coque (métal brossé, vis, charnière crantée, LED qui respire, haut-parleurs,
+croix directionnelle, boutons A/B/X/Y, START/SELECT) est en dégradés, ombres et pseudo-éléments ;
+les écrans ont scanlines (`repeating-linear-gradient`), reflet de dalle et vignettage en calques
+`aria-hidden` ; l'océan des grilles scintille par animation de `background-position` déphasée
+selon `nth-child`, et le balayage radar est un `conic-gradient` en rotation sur `::after`.
+Choix typographique en trio (Black Ops One pour le logo, Silkscreen pour l'interface, VT323 pour
+les données), via Google Fonts — l'auto-hébergement en `.woff2` recommandé par la doc reste à
+faire. Les libellés visibles disent « Navcom », jamais « DS » (`docs/04-assets.md` §9, marque
+Nintendo). `prefers-reduced-motion` neutralise toutes les animations. Les commandes latérales
+décoratives disparaissent sous 760 px. Aucune règle de jeu déplacée dans le front : les
+composants Razor ne gagnent que du balisage de présentation (labels de coordonnées A–J/1–10
+calculés dans `GridView`, jauge d'énergie à segments plafonnée à l'affichage).
+
+**Scénario de vérification :** `dotnet build` → 0 avertissement. Parcours complet piloté par le
+DOM (le pane navigateur ne compositait pas de captures dans cet environnement) : titre → lobby →
+déploiement → bataille avec 8 tirs réels (2 touchés, 6 manqués, journal et jauge mis à jour).
+Contrôles ciblés : `water-shimmer` et `radar-sweep` actifs dans les styles calculés, les trois
+polices dans `document.fonts` à l'état `loaded`, labels A–J/1–10 rendus, aucune erreur console
+hormis le 404 préexistant de `Naval.App.styles.css` (bundle scoped vide, bénin).
+
+**Résultat observé :** Rendu conforme sur les cinq écrans, animations et états visuels de
+cellule (touché, manqué, coulé, aperçu, mine, bouclier, brouillard) tous stylés, zéro fichier
+binaire ajouté à ce stade.
+
+## Les navires posés restaient invisibles pendant le déploiement
+
+**Prompt :** « Lors de la phase de planification j'arrive bien à voir où je pose mon bateau,
+en revanche une fois posé je ne le vois plus sur l'écran. »
+
+**Décision et justification :** La grille de déploiement affichait `game.Self.Board` tel que
+renvoyé par le serveur — or celui-ci ne connaît pas les placements avant la soumission de
+`PlaceFleetRequest` : ils ne vivaient que dans la liste locale `_placements` de la page.
+Correction par `BuildDisplayBoard` dans `Deploy.razor` : superposition des cases occupées par
+les placements locaux (marquées `'S'`) sur la grille serveur, juste avant le passage à
+`GridView`. C'est de l'affichage pur : la soumission d'un bloc au « Valider la flotte » et
+l'autorité du serveur sont inchangées, et la validation locale continue de s'appuyer sur
+`OccupiedCells`. Effet secondaire souhaitable : survoler une case occupée montre l'aperçu
+rouge « refusé » par-dessus le navire posé.
+
+**Scénario de vérification :** Après chaque pose successive (Carrier, Battleship, Cruiser),
+comptage des cases `grid-cell--ship` dans le DOM : 5, puis 9, puis 12 — la flotte s'accumule
+visuellement. `dotnet build` → 0 avertissement.
+
+**Résultat observé :** Les navires posés restent visibles pendant toute la phase de
+déploiement ; plus aucun placement à l'aveugle.
+
+## Branchement des sprites de navires et des icônes de pouvoirs
+
+**Prompt :** « Arrives-tu maintenant à intégrer les assets à tout ça ? »
+
+**Décision et justification :** Quatre choix, et deux bugs réels découverts :
+
+1. **Overlay de sprites par grille jumelle.** Plutôt que découper chaque sprite en tranches par
+   cellule, `GridView` gagne un paramètre `ShipSprites` et rend une seconde grille CSS
+   absolument positionnée, au même template et au même gap que les cases : chaque navire est un
+   élément `grid-column: X / span taille`, donc aligné au pixel sans calcul de coordonnées. Les
+   navires verticaux tournent le sprite horizontal de 90° avec une largeur pré-rotation de
+   `calc(taille × 100 % + gaps)`. L'overlay est `pointer-events: none` et `aria-hidden`.
+2. **Invariant de non-fuite respecté par construction.** Les sprites ne sont construits que
+   depuis `Self.Fleet` (dont le serveur renseigne `Cells` uniquement pour sa propre flotte) et
+   `Opponent.SunkShips` (positions déjà révélées). La variante (`-damaged`/`-sunk`) découle de
+   `Hits`/`IsSunk` fournis par le serveur. Aucune position non révélée ne transite par le front.
+3. **Icônes en masque CSS.** Les icônes sont tracées en `currentColor` : appliquées via
+   `mask-image` (variable `--icon-url` posée par `PowerBar`), elles prennent la couleur d'état
+   du pouvoir (prêt/armé/en charge/épuisé) définie en CSS. Le nom de fichier est dérivé du
+   `PowerId` en kebab-case — aucune donnée du catalogue codée en dur côté front.
+4. **Bug découvert : le montage `<Content Link>` du csproj ne servait rien en dev.** Les routes
+   existaient dans le manifest des static web assets (200 au lieu de 404) mais les réponses
+   étaient **vides, sans Content-Type** — les images étaient en état « broken » (diagnostic par
+   `drawImage` sur canvas). Remplacé par une copie physique dans `wwwroot/assets/`, servie
+   normalement. Point signalé au binôme auteur de la branche `assets` : son montage n'a
+   probablement jamais servi un fichier en dev.
+5. **Piège Chromium : une `url()` relative passée via `var()` se résout contre la feuille CSS**
+   (`/css/assets/…` → 404), pas contre le document. Corrigé en URL absolue `/assets/…` dans le
+   style inline généré par `PowerBar`.
+
+**Scénario de vérification :** Placements mixtes (3 horizontaux, 2 verticaux) : spans et classe
+`--vertical` corrects dans le DOM, sprite vertical mesuré à 28×113 px (bien tourné). Après un
+coup encaissé de l'IA, le sprite du croiseur passe à `cruiser-damaged.svg`. Avant correctif :
+`fetch` → 200, corps vide, `content-type: null`, canvas en erreur « broken state » ; après :
+`image/svg+xml`, 39 SVG servis, 0 image cassée. Masque d'icône vérifié par style calculé et
+`fetch` de l'URL résolue → 200.
+
+**Résultat observé :** Sprites visibles aux trois états sur les deux grilles, épaves adverses
+comprises, icônes colorées par état ; `dotnet build` → 0 avertissement.
+
+## Bruitages 8-bit générés et joués en C# pur, sans JavaScript
+
+**Prompt :** « Et le son ? Tu peux générer des bruitages 8-bit ? » puis « Je vois que tu as
+utilisé du JS pour le son, peux-tu rester uniquement en C# ? »
+
+**Décision et justification :**
+
+1. **Synthèse maison plutôt qu'assets externes.** Les 12 bruitages de `docs/04-assets.md` §6
+   (interface, refus, tir, manqué, touché, coulé, sonar, alarme, victoire, défaite) sont
+   synthétisés à la manière de jsfxr — ondes carrées avec balayage de fréquence, bruit blanc
+   filtré passe-bas, enveloppes exponentielles, bitcrush pour le grain chiptune — par un
+   générateur C# jetable exécuté **hors solution** (répertoire temporaire : la consigne des
+   quatre projets reste respectée). Création originale : zéro question de licence en soutenance.
+   Sortie en WAV PCM 16 bits mono 22 050 Hz. La boucle d'ambiance `ambient-sea` est volontairement
+   exclue (composition musicale, mieux servie par BeepBox).
+2. **Lecture 100 % C#, à la demande explicite de l'utilisateur.** Une première version passait
+   par un module JS et `IJSRuntime` ; remplacée par une solution sans interop : `AudioService`
+   est un conteneur d'état pur (liste de sons actifs, identifiants uniques, événement `Changed`)
+   et `AudioChannel.razor` la matérialise en éléments `<audio autoplay>` que le navigateur joue
+   à l'insertion dans le DOM. `@key` sur l'identifiant force un élément neuf par déclenchement
+   (les sons se chevauchent correctement) ; plafond de 6 éléments simultanés et purge des sons
+   de plus de 4 s pour borner le DOM. La politique d'autoplay est satisfaite par construction :
+   tous les déclencheurs suivent un clic. Les volumes sont pré-mixés dans les WAV, l'attribut
+   HTML ne permettant pas de les régler.
+3. **Le choix du son du tir n'est pas une règle de jeu.** `Battle` compare l'état avant/après le
+   tir (`SunkShips.Count`, comptage des `x`/`#` du `TargetBoard`) pour choisir entre `sunk`,
+   `explosion` et `splash` : simple lecture de ce que le serveur a déjà tranché. `deny` sonne
+   sur `LastError`, l'alarme sur la transition `IsCharging` (une seule fois), les jingles au
+   premier rendu de l'écran de fin.
+4. **Compromis assumé : l'état muet n'est pas persisté.** La doc demande `localStorage`, mais
+   y accéder exigerait précisément de l'interop JS. Le mute (bouton 🔊/🔇 encastré dans la
+   charnière) vit en mémoire du service scoped : il survit à la navigation, pas au F5. À
+   retrancher avec le binôme si la persistance devient un vrai besoin.
+
+**Scénario de vérification :** Décodage des 12 WAV vérifié via `AudioContext.decodeAudioData`
+(durées conformes). Lecture réelle prouvée en deux temps : un vrai clic (activation utilisateur
+authentique, requise par la politique d'autoplay) → l'élément `ui-select` atteint `ended: true`
+à `currentTime` 0,14 s, sa durée exacte ; puis un `MutationObserver` écoutant `ended` sur une
+partie complète → 30 sons joués jusqu'au bout dans l'ordre attendu (boutons, sélection,
+rotation, refus de chevauchement, `fire` puis `splash`/`explosion` par tir). Aucun avertissement
+d'autoplay en console. `grep` : plus aucune référence à `naval-audio`/`IJSRuntime` dans les
+sources de l'app.
+
+**Résultat observé :** `dotnet build` → 0 avertissement, `dotnet test` → 47/47. Le seul
+JavaScript restant dans l'application est le runtime Blazor lui-même.

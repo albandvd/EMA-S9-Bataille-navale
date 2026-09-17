@@ -1,111 +1,916 @@
+/* ============================================================
+   La console « Naval DS » — coque, écrans, commandes physiques
+   ============================================================ */
+
 .ds-console {
+    position: relative;
+    width: min(920px, 100%);
+    display: flex;
+    flex-direction: column;
+    padding: 22px 26px 28px;
+    background: var(--shell-metal);
+    border-radius: var(--radius-shell);
+    border: 1px solid var(--shell-edge);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .08),
+        inset 0 -2px 6px rgba(0, 0, 0, .55),
+        0 30px 60px -18px rgba(0, 0, 0, .85),
+        0 8px 22px rgba(0, 0, 0, .5);
+}
+
+/* Vis décoratives aux quatre coins */
+.ds-console::before,
+.ds-console::after {
+    content: "";
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #4a5070, #171a28 70%);
+    box-shadow: 0 0 0 2px rgba(0, 0, 0, .35);
+}
+
+.ds-console::before { top: 14px; left: 16px; }
+.ds-console::after  { top: 14px; right: 16px; }
+
+/* ---------- Moitié haute (capot) ---------- */
+
+.ds-console__lid {
+    position: relative;
+    display: grid;
+    grid-template-columns: 34px 1fr 34px;
+    gap: 14px;
+    align-items: center;
+    padding-bottom: 16px;
+}
+
+/* Grilles de haut-parleurs */
+.ds-console__speaker {
+    display: grid;
+    grid-template-columns: repeat(2, 6px);
+    gap: 5px;
+    justify-content: center;
+}
+
+.ds-console__speaker i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #060810, #1e2233 80%);
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .9), 0 1px 0 rgba(255, 255, 255, .05);
+}
+
+/* ---------- Charnière ---------- */
+
+.ds-console__hinge {
+    position: relative;
+    height: 26px;
+    margin: 0 -10px;
+    border-radius: 13px;
+    background:
+        repeating-linear-gradient(90deg,
+            var(--shell-light) 0 26px,
+            var(--shell-dark) 26px 30px);
+    box-shadow:
+        inset 0 3px 5px rgba(0, 0, 0, .6),
+        inset 0 -2px 3px rgba(255, 255, 255, .05);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 18px;
+}
+
+.ds-console__hinge-label {
+    font-family: var(--font-ui);
+    font-size: .55rem;
+    letter-spacing: .35em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, .8);
+}
+
+/* Le haut-parleur logique : les éléments <audio> jouent très bien invisibles */
+.audio-channel { display: none; }
+
+.ds-console__hinge-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Interrupteur de son encastré dans la charnière */
+.ds-console__mute {
+    border: none;
+    padding: 2px 8px;
+    border-radius: 8px;
+    font-size: .8rem;
+    line-height: 1.4;
+    cursor: pointer;
+    background: linear-gradient(180deg, #343a56, #1d2134);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 2px 3px rgba(0, 0, 0, .5);
+    transition: filter .12s ease, transform .07s ease;
+}
+
+.ds-console__mute:hover { filter: brightness(1.25); }
+.ds-console__mute:active { transform: translateY(1px); }
+
+.ds-console__mute:focus-visible {
+    outline: 2px solid var(--screen-glow);
+    outline-offset: 2px;
+}
+
+/* LED d'alimentation qui « respire » */
+.ds-console__led {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--led-on);
+    box-shadow: 0 0 8px 2px rgba(69, 240, 160, .7), inset 0 0 2px rgba(255, 255, 255, .8);
+    animation: led-breathe 3.2s ease-in-out infinite;
+}
+
+@keyframes led-breathe {
+    0%, 100% { opacity: 1; box-shadow: 0 0 8px 2px rgba(69, 240, 160, .7); }
+    50%      { opacity: .55; box-shadow: 0 0 3px 1px rgba(69, 240, 160, .35); }
+}
+
+/* ---------- Moitié basse (socle + commandes) ---------- */
+
+.ds-console__base {
+    display: grid;
+    grid-template-columns: 92px 1fr 92px;
+    gap: 16px;
+    align-items: center;
+    padding-top: 16px;
+}
+
+@media (max-width: 760px) {
+    .ds-console__lid  { grid-template-columns: 1fr; }
+    .ds-console__base { grid-template-columns: 1fr; }
+    .ds-console__speaker,
+    .ds-console__dpad,
+    .ds-console__abxy,
+    .ds-console__startselect { display: none; }
+}
+
+/* Croix directionnelle */
+.ds-console__dpad {
+    position: relative;
+    width: 84px;
+    height: 84px;
+    justify-self: center;
+    filter: drop-shadow(0 3px 3px rgba(0, 0, 0, .5));
+}
+
+.ds-console__dpad i {
+    position: absolute;
+    background: linear-gradient(180deg, #343a56, #1d2134);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), inset 0 -2px 3px rgba(0, 0, 0, .5);
+}
+
+.ds-console__dpad i:nth-child(1) { left: 28px; top: 0;    width: 28px; height: 84px; border-radius: 6px; }
+.ds-console__dpad i:nth-child(2) { left: 0;    top: 28px; width: 84px; height: 28px; border-radius: 6px; }
+.ds-console__dpad i:nth-child(3) {
+    left: 34px; top: 34px; width: 16px; height: 16px; border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #12141f, #262b42);
+}
+
+/* Boutons A / B / X / Y */
+.ds-console__abxy {
+    position: relative;
+    width: 84px;
+    height: 84px;
+    justify-self: center;
+}
+
+.ds-console__abxy b {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    font-family: var(--font-ui);
+    font-size: .6rem;
+    color: rgba(255, 255, 255, .75);
+    background: radial-gradient(circle at 35% 30%, #3c4263, #1c2033 75%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .18),
+        inset 0 -3px 4px rgba(0, 0, 0, .55),
+        0 2px 3px rgba(0, 0, 0, .6);
+    user-select: none;
+}
+
+.ds-console__abxy b:nth-child(1) { left: 27px; top: 0; }    /* X */
+.ds-console__abxy b:nth-child(2) { left: 54px; top: 27px; } /* A */
+.ds-console__abxy b:nth-child(3) { left: 27px; top: 54px; } /* B */
+.ds-console__abxy b:nth-child(4) { left: 0;    top: 27px; } /* Y */
+
+/* START / SELECT */
+.ds-console__startselect {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: center;
+    gap: 26px;
+    margin-top: 14px;
+}
+
+.ds-console__startselect span {
+    position: relative;
+    font-family: var(--font-ui);
+    font-size: .5rem;
+    letter-spacing: .18em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    padding-top: 12px;
+}
+
+.ds-console__startselect span::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 26px;
+    height: 8px;
+    border-radius: 4px;
+    background: linear-gradient(180deg, #343a56, #1d2134);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 2px 2px rgba(0, 0, 0, .5);
+}
+
+/* ============================================================
+   Écrans — dalle, phosphore, scanlines, reflet
+   ============================================================ */
+
+.ds-screen {
+    position: relative;
+    min-height: 180px;
+    border-radius: var(--radius-screen);
+    padding: 0;
+    background: #0a0f1e;
+    border: 3px solid #05070d;
+    box-shadow:
+        inset 0 0 24px rgba(0, 0, 0, .85),
+        0 0 0 1px rgba(255, 255, 255, .04),
+        0 0 26px -6px rgba(142, 202, 230, .25);
+    overflow: hidden;
+}
+
+.ds-screen__content {
+    position: relative;
+    z-index: 1;
+    padding: 16px 18px 18px;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    padding: 16px;
-    background: var(--shell);
-    border-radius: 24px;
-    box-shadow: inset 0 0 12px rgba(0, 0, 0, .5);
+    min-height: 100%;
+    box-sizing: border-box;
 }
 
-.ds-console__hinge {
-    height: 24px;
-    background: repeating-linear-gradient(90deg, var(--shell-light) 0 4px, var(--shell) 4px 8px);
-    border-radius: 4px;
+.ds-screen--top .ds-screen__content {
+    background:
+        radial-gradient(ellipse 120% 90% at 50% -20%, rgba(28, 76, 124, .5), transparent 60%),
+        linear-gradient(180deg, var(--sea-abyss), var(--sea-deep) 70%, #0d2a4d);
 }
 
-.ds-screen {
-    background: var(--sea-deep);
-    border-radius: 12px;
-    padding: 12px;
-    box-shadow: inset 0 0 8px rgba(0, 0, 0, .6);
+.ds-screen--bottom .ds-screen__content {
+    background:
+        radial-gradient(ellipse 120% 100% at 50% 120%, rgba(6, 214, 160, .1), transparent 55%),
+        linear-gradient(180deg, #071426, var(--sea-deep));
 }
+
+/* Scanlines CRT */
+.ds-screen__scanlines {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background: repeating-linear-gradient(180deg,
+        rgba(0, 0, 0, 0) 0 2px,
+        rgba(0, 0, 0, .16) 2px 3px);
+    mix-blend-mode: multiply;
+}
+
+/* Reflet de dalle bombée + vignettage */
+.ds-screen__glare {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    background:
+        var(--screen-vignette),
+        linear-gradient(115deg,
+            rgba(255, 255, 255, .09) 0%,
+            rgba(255, 255, 255, .03) 22%,
+            transparent 40%);
+}
+
+/* Titres dans les écrans */
+.ds-screen h1,
+.ds-screen h2 {
+    margin: 0;
+    font-family: var(--font-ui);
+    font-weight: 400;
+    font-size: .8rem;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    color: var(--screen-glow);
+    text-shadow: 0 0 8px rgba(142, 202, 230, .6);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ds-screen h2::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(142, 202, 230, .5), transparent);
+}
+
+/* ============================================================
+   Boutons physiques (actions)
+   ============================================================ */
 
 .ds-button {
-    background: var(--hull);
-    color: var(--shell);
+    position: relative;
+    align-self: center;
+    font-family: var(--font-ui);
+    font-size: .75rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: #08131f;
+    background: linear-gradient(180deg, #b9e3f5, var(--screen-glow) 45%, #5da3c4);
     border: none;
     border-radius: 999px;
-    padding: 8px 16px;
-    font-family: inherit;
+    padding: 12px 28px;
     cursor: pointer;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .7),
+        inset 0 -4px 6px rgba(8, 19, 31, .35),
+        0 5px 0 #33607a,
+        0 9px 16px rgba(0, 0, 0, .5);
+    transition: transform .07s ease, box-shadow .07s ease, filter .15s ease;
+}
+
+.ds-button:hover:not(:disabled) { filter: brightness(1.08); }
+
+.ds-button:active:not(:disabled) {
+    transform: translateY(4px);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .7),
+        inset 0 -2px 4px rgba(8, 19, 31, .35),
+        0 1px 0 #33607a,
+        0 3px 8px rgba(0, 0, 0, .5);
 }
 
 .ds-button:disabled {
-    background: var(--hull-dark);
+    background: linear-gradient(180deg, #6c7793, var(--hull-dark));
+    color: rgba(8, 19, 31, .55);
+    box-shadow: inset 0 -3px 5px rgba(0, 0, 0, .3), 0 3px 0 #3a4152;
     cursor: not-allowed;
 }
 
-.ds-error-banner {
-    background: var(--hit);
-    color: var(--text);
-    padding: 8px 12px;
-    border-radius: 8px;
+.ds-button:focus-visible {
+    outline: 2px solid var(--energy);
+    outline-offset: 3px;
 }
+
+/* ============================================================
+   Bandeau d'erreur — voyant d'alerte
+   ============================================================ */
+
+.ds-error-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0;
+    background: linear-gradient(180deg, rgba(255, 59, 92, .25), rgba(106, 4, 15, .35));
+    border: 1px solid var(--hit);
+    color: #ffd7de;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-family: var(--font-data);
+    font-size: 1.05rem;
+    letter-spacing: .04em;
+    box-shadow: 0 0 14px -2px var(--hit-glow), inset 0 0 10px rgba(255, 59, 92, .15);
+    animation: alert-flash .9s ease-in-out 2;
+}
+
+.ds-error-banner::before {
+    content: "⚠";
+    font-size: 1rem;
+    color: var(--hit);
+    animation: led-breathe 1.4s ease-in-out infinite;
+}
+
+@keyframes alert-flash {
+    0%, 100% { box-shadow: 0 0 14px -2px var(--hit-glow), inset 0 0 10px rgba(255, 59, 92, .15); }
+    50%      { box-shadow: 0 0 26px 0 var(--hit-glow), inset 0 0 18px rgba(255, 59, 92, .3); }
+}
+
+/* ============================================================
+   Formulaire (lobby)
+   ============================================================ */
 
 .ds-form {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 16px;
+    max-width: 420px;
+    width: 100%;
+    align-self: center;
 }
 
 .ds-field {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
 }
 
 .ds-field__label {
-    font-size: .75rem;
-    letter-spacing: .08em;
+    font-size: .6rem;
+    letter-spacing: .22em;
     text-transform: uppercase;
     color: var(--screen-glow);
+    text-shadow: 0 0 6px rgba(142, 202, 230, .5);
 }
 
 .ds-field__control {
-    background: var(--sea);
+    background: rgba(4, 18, 38, .8);
     color: var(--text);
     border: 1px solid var(--sea-light);
-    border-radius: 8px;
-    padding: 8px 10px;
-    font-family: inherit;
-    font-size: 1rem;
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-family: var(--font-data);
+    font-size: 1.25rem;
+    letter-spacing: .05em;
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, .5);
+    transition: border-color .15s ease, box-shadow .15s ease;
 }
 
 .ds-field__control:focus {
     outline: none;
     border-color: var(--screen-glow);
-    box-shadow: 0 0 0 2px rgba(142, 202, 230, .35);
+    box-shadow:
+        inset 0 2px 6px rgba(0, 0, 0, .5),
+        0 0 0 2px rgba(142, 202, 230, .3),
+        0 0 16px -4px rgba(142, 202, 230, .6);
 }
 
-.ds-field__control::placeholder {
-    color: var(--hull);
-}
+.ds-field__control::placeholder { color: var(--text-dim); }
+
+select.ds-field__control { cursor: pointer; }
+
+/* ============================================================
+   Cale des navires (déploiement)
+   ============================================================ */
 
 .ship-tray {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 8px;
 }
 
 .ship-tray__item {
-    background: var(--sea);
-    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: linear-gradient(180deg, rgba(28, 76, 124, .35), rgba(11, 37, 69, .6));
     border: 1px solid var(--sea-light);
-    border-radius: 8px;
-    padding: 8px 10px;
+    border-radius: 10px;
+    padding: 9px 14px;
     cursor: pointer;
+    transition: transform .12s ease, border-color .12s ease, box-shadow .12s ease;
 }
 
 .ship-tray__item:hover {
     border-color: var(--screen-glow);
+    transform: translateX(4px);
+    box-shadow: -4px 0 0 -1px var(--screen-glow);
 }
 
 .ship-tray__item--selected {
-    outline: 2px solid var(--screen-glow);
-    background: var(--sea-light);
+    border-color: var(--charge);
+    background: linear-gradient(180deg, rgba(6, 214, 160, .22), rgba(11, 37, 69, .7));
+    box-shadow: 0 0 14px -4px var(--charge-glow), inset 0 0 10px rgba(6, 214, 160, .12);
+    transform: translateX(4px);
 }
 
-.ship-tray__rotate {
-    align-self: flex-start;
+.ship-tray__name {
+    font-family: var(--font-data);
+    font-size: 1.2rem;
+    letter-spacing: .05em;
+}
+
+/* Silhouette du navire : le sprite SVG, à l'échelle 8px/case */
+.ship-tray__sprite {
+    height: 16px;
+    width: auto;
+    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6));
+}
+
+.ship-tray__item--selected .ship-tray__sprite {
+    filter: drop-shadow(0 0 5px var(--charge)) drop-shadow(0 1px 2px rgba(0, 0, 0, .6));
+}
+
+.ship-tray__rotate { align-self: flex-start; margin-top: 4px; }
+
+/* ============================================================
+   Jauge d'énergie — barre à segments lumineux
+   ============================================================ */
+
+.energy-gauge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.energy-gauge__label {
+    font-size: .55rem;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--energy);
+    text-shadow: 0 0 6px var(--energy-glow);
+}
+
+.energy-gauge__cells {
+    display: flex;
+    gap: 3px;
+    padding: 4px;
+    background: rgba(4, 18, 38, .8);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 209, 102, .25);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, .6);
+}
+
+.energy-gauge__cells i {
+    width: 9px;
+    height: 14px;
+    border-radius: 2px;
+    background: rgba(255, 209, 102, .08);
+    transform: skewX(-8deg);
+}
+
+.energy-gauge__cells i.is-on {
+    background: linear-gradient(180deg, #ffe6a8, var(--energy));
+    box-shadow: 0 0 7px var(--energy-glow);
+}
+
+.energy-gauge__value {
+    font-family: var(--font-data);
+    font-size: 1.3rem;
+    color: var(--energy);
+    text-shadow: 0 0 8px var(--energy-glow);
+    min-width: 2ch;
+    text-align: right;
+}
+
+/* ============================================================
+   Charge adverse — alerte sonar
+   ============================================================ */
+
+.charge-meter {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 14px 8px 34px;
+    position: relative;
+    border-radius: 10px;
+    border: 1px dashed rgba(255, 209, 102, .5);
+    background: rgba(255, 209, 102, .07);
+    font-family: var(--font-data);
+    font-size: 1.05rem;
+    color: var(--energy);
+    animation: charge-pulse 2s ease-in-out infinite;
+}
+
+.charge-meter::before {
+    content: "◉";
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    animation: led-breathe 1.2s ease-in-out infinite;
+}
+
+@keyframes charge-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 209, 102, .0); }
+    50%      { box-shadow: 0 0 16px -2px var(--energy-glow); }
+}
+
+/* ============================================================
+   Barre de pouvoirs — cartes d'aptitude
+   ============================================================ */
+
+.power-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.power-bar__slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    min-width: 76px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--sea-light);
+    background: linear-gradient(180deg, rgba(28, 76, 124, .4), rgba(4, 18, 38, .8));
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: .55rem;
+    letter-spacing: .04em;
+    cursor: pointer;
+    transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+
+/* L'icône SVG (trait currentColor) est appliquée en masque : la couleur
+   vient du CSS et suit l'état du pouvoir. */
+.power-bar__icon {
+    width: 24px;
+    height: 24px;
+    background-color: var(--screen-glow);
+    -webkit-mask: var(--icon-url) center / contain no-repeat;
+    mask: var(--icon-url) center / contain no-repeat;
+    filter: drop-shadow(0 0 6px rgba(142, 202, 230, .6));
+}
+
+.power-bar__slot--armed    .power-bar__icon { background-color: var(--charge); }
+.power-bar__slot--charging .power-bar__icon { background-color: var(--energy); }
+
+.power-bar__slot--oncooldown .power-bar__icon,
+.power-bar__slot--exhausted  .power-bar__icon {
+    background-color: var(--hull-dark);
+    filter: none;
+}
+
+.power-bar__meta {
+    font-family: var(--font-data);
+    font-size: .95rem;
+    color: var(--text-dim);
+}
+
+.power-bar__slot--ready:not(:disabled):hover {
+    transform: translateY(-3px);
+    border-color: var(--screen-glow);
+    box-shadow: 0 6px 18px -6px rgba(142, 202, 230, .7);
+}
+
+.power-bar__slot--ready:not(:disabled) {
+    border-color: rgba(142, 202, 230, .6);
+    box-shadow: 0 0 10px -4px rgba(142, 202, 230, .8);
+}
+
+.power-bar__slot--armed {
+    border-color: var(--charge);
+    box-shadow: 0 0 12px -3px var(--charge-glow);
+    animation: charge-pulse 1.6s ease-in-out infinite;
+}
+
+.power-bar__slot--charging {
+    border-color: var(--energy);
+    background:
+        repeating-linear-gradient(-45deg,
+            rgba(255, 209, 102, .08) 0 6px,
+            transparent 6px 12px),
+        linear-gradient(180deg, rgba(28, 76, 124, .4), rgba(4, 18, 38, .8));
+}
+
+.power-bar__slot--oncooldown,
+.power-bar__slot--exhausted,
+.power-bar__slot:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+    filter: saturate(.4);
+}
+
+/* ============================================================
+   Journal des événements — terminal sonar
+   ============================================================ */
+
+.event-log {
+    list-style: none;
+    margin: 0;
+    padding: 10px 12px;
+    max-height: 130px;
+    overflow-y: auto;
+    background: rgba(2, 8, 18, .85);
+    border: 1px solid rgba(6, 214, 160, .25);
+    border-radius: 10px;
+    font-family: var(--font-data);
+    font-size: 1.05rem;
+    box-shadow: inset 0 0 18px rgba(0, 0, 0, .6);
+    scrollbar-width: thin;
+    scrollbar-color: var(--sea-light) transparent;
+}
+
+.event-log__entry {
+    display: flex;
+    gap: 10px;
+    padding: 1px 0;
+    color: #9ff0d9;
+}
+
+.event-log__entry:first-child {
+    color: #d9fff2;
+    text-shadow: 0 0 6px var(--charge-glow);
+    animation: log-arrive .4s ease-out;
+}
+
+@keyframes log-arrive {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: none; }
+}
+
+.event-log__entry::before { content: "▸"; color: var(--charge); }
+
+.event-log__time { color: var(--text-dim); flex-shrink: 0; }
+
+/* ============================================================
+   Écran titre
+   ============================================================ */
+
+.title-screen {
+    position: relative;
+    flex: 1;
+    min-height: 250px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    overflow: hidden;
+    margin: -16px -18px -18px;
+    padding: 24px;
+}
+
+.ds-screen h1.title-logo {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: .95;
+    font-family: var(--font-display);
+    letter-spacing: .06em;
+    font-size: clamp(2rem, 6vw, 3.4rem);
+    color: var(--text);
+    text-shadow:
+        0 0 18px rgba(142, 202, 230, .8),
+        0 4px 0 #0d2a4d,
+        0 8px 24px rgba(0, 0, 0, .8);
+    animation: logo-float 5s ease-in-out infinite;
+}
+
+.ds-screen h1.title-logo span {
+    color: var(--screen-glow);
+    font-size: .72em;
+    letter-spacing: .32em;
+    margin-top: 4px;
+}
+
+@keyframes logo-float {
+    0%, 100% { transform: translateY(0) rotate(-.5deg); }
+    50%      { transform: translateY(-8px) rotate(.5deg); }
+}
+
+.title-screen__sub {
+    z-index: 2;
+    margin: 6px 0 0;
+    font-family: var(--font-data);
+    font-size: 1.15rem;
+    letter-spacing: .3em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+}
+
+/* Trois nappes de vagues qui défilent */
+.title-screen .wave {
+    position: absolute;
+    left: -50%;
+    width: 200%;
+    height: 120px;
+    bottom: -58px;
+    z-index: 1;
+    border-radius: 45% 47% 0 0;
+    animation: wave-drift linear infinite;
+}
+
+.title-screen .wave:nth-child(1) {
+    background: rgba(28, 76, 124, .55);
+    animation-duration: 9s;
+    bottom: -52px;
+}
+
+.title-screen .wave:nth-child(2) {
+    background: rgba(19, 49, 92, .75);
+    animation-duration: 13s;
+    animation-direction: reverse;
+    bottom: -62px;
+}
+
+.title-screen .wave:nth-child(3) {
+    background: rgba(4, 18, 38, .95);
+    animation-duration: 21s;
+    bottom: -72px;
+}
+
+@keyframes wave-drift {
+    from { transform: translateX(-6%) rotate(0deg); }
+    to   { transform: translateX(6%)  rotate(2deg); }
+}
+
+/* Le porte-avions du jeu tangue sur l'horizon */
+.title-ship {
+    position: absolute;
+    z-index: 1;
+    bottom: 46px;
+    right: 12%;
+    width: 130px;
+    height: 30px;
+    background: url('../assets/sprites/ships/carrier.svg') center / contain no-repeat;
+    animation: ship-bob 4.5s ease-in-out infinite;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, .6));
+}
+
+@keyframes ship-bob {
+    0%, 100% { transform: translateY(0) rotate(-2deg); }
+    50%      { transform: translateY(-6px) rotate(2.5deg); }
+}
+
+/* Invite clignotante autour du bouton de démarrage */
+.press-start {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    flex: 1;
+    justify-content: center;
+}
+
+.press-start__hint {
+    font-family: var(--font-ui);
+    font-size: .6rem;
+    letter-spacing: .3em;
+    text-transform: uppercase;
+    color: var(--screen-glow);
+    animation: blink 1.4s steps(2) infinite;
+}
+
+@keyframes blink {
+    50% { opacity: 0; }
+}
+
+/* ============================================================
+   Écran de fin
+   ============================================================ */
+
+.result-banner {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 200px;
+}
+
+.ds-screen h2.result-banner__title {
+    margin: 0;
+    display: block;
+    text-transform: none;
+    font-family: var(--font-display);
+    font-size: clamp(2.2rem, 7vw, 3.6rem);
+    letter-spacing: .08em;
+    animation: result-slam .5s cubic-bezier(.2, 1.6, .4, 1);
+}
+
+.ds-screen h2.result-banner__title::after { display: none; }
+
+.result-banner--win .result-banner__title {
+    color: var(--charge);
+    text-shadow: 0 0 24px var(--charge-glow), 0 4px 0 #033628, 0 8px 24px rgba(0, 0, 0, .8);
+}
+
+.result-banner--lose .result-banner__title {
+    color: var(--hit);
+    text-shadow: 0 0 24px var(--hit-glow), 0 4px 0 #40010a, 0 8px 24px rgba(0, 0, 0, .8);
+}
+
+@keyframes result-slam {
+    from { transform: scale(2.4); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+}
+
+.result-banner__sub {
+    margin: 0;
+    font-family: var(--font-data);
+    font-size: 1.2rem;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--text-dim);
 }

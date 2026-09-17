@@ -1,10 +1,53 @@
+@inject AudioService Audio
+
 <div class="ds-console">
-    <div class="ds-console__hinge"></div>
-    @TopScreen
-    @BottomScreen
+    <div class="ds-console__lid">
+        <div class="ds-console__speaker" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+        @TopScreen
+        <div class="ds-console__speaker" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+    </div>
+
+    <div class="ds-console__hinge">
+        <span class="ds-console__hinge-label">Navcom</span>
+        <span class="ds-console__hinge-right">
+            <button class="ds-console__mute"
+                    title="@(Audio.Muted ? "Réactiver le son" : "Couper le son")"
+                    aria-pressed="@Audio.Muted"
+                    @onclick="ToggleMute">@(Audio.Muted ? "🔇" : "🔊")</button>
+            <span class="ds-console__led" title="Alimentation"></span>
+        </span>
+    </div>
+
+    <div class="ds-console__base">
+        <div class="ds-console__dpad" aria-hidden="true">
+            <i></i><i></i><i></i>
+        </div>
+        @BottomScreen
+        <div class="ds-console__abxy" aria-hidden="true">
+            <b>X</b><b>A</b><b>B</b><b>Y</b>
+        </div>
+        <div class="ds-console__startselect" aria-hidden="true">
+            <span>Select</span>
+            <span>Start</span>
+        </div>
+    </div>
+
+    <AudioChannel />
 </div>
 
 @code {
     [Parameter] public RenderFragment? TopScreen { get; set; }
     [Parameter] public RenderFragment? BottomScreen { get; set; }
+
+    private void ToggleMute()
+    {
+        if (!Audio.ToggleMute())
+        {
+            Audio.Play("ui-select");
+        }
+    }
 }

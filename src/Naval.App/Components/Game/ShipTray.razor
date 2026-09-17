@@ -1,9 +1,14 @@
+@inject AudioService Audio
+
 <div class="ship-tray">
     @foreach (var ship in Fleet.Where(s => !_placedIds.Contains(s.Id)))
     {
         <div class="ship-tray__item @(ship == _selected ? "ship-tray__item--selected" : "")"
              @onclick="() => Select(ship)">
-            @ship.Type (@ship.Size)
+            <span class="ship-tray__name">@ship.Type</span>
+            <img class="ship-tray__sprite"
+                 src="assets/sprites/ships/@(ship.Type.ToString().ToLowerInvariant()).svg"
+                 alt="@ship.Size cases" />
         </div>
     }
     <button class="ship-tray__rotate ds-button" @onclick="ToggleOrientation">
@@ -13,27 +18,46 @@
 
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<ShipStateDto> Fleet { get; set; } = [];
-    [Parameter] public EventCallback<ShipPlacementDto> OnShipPlaced { get; set; }
+    [Parameter] public EventCallback<ShipStateDto?> OnSelectionChanged { get; set; }
+    [Parameter] public EventCallback<Orientation> OnOrientationChanged { get; set; }
 
     private ShipStateDto? _selected;
     private Orientation _orientation = Orientation.Horizontal;
     private readonly HashSet<string> _placedIds = [];
 
-    private void Select(ShipStateDto ship) => _selected = ship;
+    private async Task Select(ShipStateDto ship)
+    {
+        Audio.Play("ui-move");
+        _selected = ship;
+        if (OnSelectionChanged.HasDelegate)
+        {
+            await OnSelectionChanged.InvokeAsync(_selected);
+        }
+    }
 
-    private void ToggleOrientation() =>
+    private async Task ToggleOrientation()
+    {
+        Audio.Play("ui-back");
         _orientation = _orientation == Orientation.Horizontal ? Orientation.Vertical : Orientation.Horizontal;
+        if (OnOrientationChanged.HasDelegate)
+        {
+            await OnOrientationChanged.InvokeAsync(_orientation);
+        }
+    }
 
-    public Task PlaceSelectedAtAsync(CoordinateDto origin)
+    /// <summary>
+    /// Confirme le placement du navire actuellement sélectionné : la validation géométrique
+    /// (bornes, chevauchement) est faite par la page appelante, qui seule connaît la grille et
+    /// les autres navires déjà posés.
+    /// </summary>
+    public void ConfirmPlacement()
     {
         if (_selected is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
-        var placement = new ShipPlacementDto(_selected.Type, origin, _orientation);
         _placedIds.Add(_selected.Id);
         _selected = null;
-        return OnShipPlaced.HasDelegate ? OnShipPlaced.InvokeAsync(placement) : Task.CompletedTask;
     }
 }

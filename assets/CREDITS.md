@@ -5,16 +5,26 @@ question toute prête pour le correcteur.
 
 ## Graphismes
 
-- <!-- ex. Sprites de navires — Kenney (kenney.nl), CC0 1.0 — modifiés (recoloration) -->
+- Sprites de navires (`assets/sprites/ships/*.svg`, 5 navires × normal/endommagé/coulé + leurre)
+  — création originale (généré avec Claude Code), palette `tokens.css`. Aucune attribution requise.
 
 ## Icônes
 
-- <!-- ex. sonar.svg — Lorc, game-icons.net, CC BY 3.0 — https://game-icons.net/1x1/lorc/radar-sweep.html -->
+- Icônes de pouvoirs (`assets/icons/powers/*.svg`, 23 fichiers, un par `PowerId`)
+  — création originale (généré avec Claude Code), trait monochrome colorable via `currentColor`.
+  Aucune attribution requise.
 
 ## Polices
 
-- <!-- ex. Press Start 2P — CodeMan38, SIL Open Font License 1.1 -->
+Chargées depuis Google Fonts (voir `wwwroot/index.html`) :
+
+- Black Ops One — James Grieshaber (Typodermic), SIL Open Font License 1.1 — logo et titres.
+- Silkscreen — Jason Kottke, SIL Open Font License 1.1 — libellés d'interface.
+- VT323 — Peter Hull, SIL Open Font License 1.1 — données, journal, coordonnées.
 
 ## Audio
 
-- <!-- ex. Bruitages — générés avec jsfxr, création originale -->
+- Bruitages 8-bit (`src/Naval.App/wwwroot/assets/audio/*.wav`, 12 fichiers) — création
+  originale : synthèse programmatique en C# (ondes carrées, bruit blanc filtré, enveloppes
+  exponentielles, bitcrush), à la manière de jsfxr. Volumes finaux pré-mixés dans les
+  fichiers. Aucune attribution requise.

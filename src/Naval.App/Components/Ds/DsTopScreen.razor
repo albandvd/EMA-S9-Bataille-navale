@@ -1,5 +1,9 @@
 <div class="ds-screen ds-screen--top">
-    @ChildContent
+    <div class="ds-screen__content">
+        @ChildContent
+    </div>
+    <div class="ds-screen__scanlines" aria-hidden="true"></div>
+    <div class="ds-screen__glare" aria-hidden="true"></div>
 </div>
 
 @code {

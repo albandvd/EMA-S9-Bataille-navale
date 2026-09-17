@@ -1,19 +1,29 @@
 @page "/result"
 @inject GameStateStore Store
 @inject NavigationManager Navigation
+@inject AudioService Audio
 
 <DsConsole>
     <TopScreen>
         <DsTopScreen>
             @if (Store.CurrentGame is { WinnerId: { } winnerId } game)
             {
-                <h2>@(winnerId == game.Self.PlayerId ? "Victoire" : "Défaite")</h2>
+                var victory = winnerId == game.Self.PlayerId;
+                <div class="result-banner @(victory ? "result-banner--win" : "result-banner--lose")">
+                    <h2 class="result-banner__title">@(victory ? "Victoire" : "Défaite")</h2>
+                    <p class="result-banner__sub">
+                        @(victory ? "La flotte ennemie repose par le fond" : "Votre flotte a sombré")
+                    </p>
+                </div>
             }
         </DsTopScreen>
     </TopScreen>
     <BottomScreen>
         <DsBottomScreen>
-            <DsButton Label="Rejouer" OnClick="GoToLobby" />
+            <div class="press-start">
+                <span class="press-start__hint">— Fin de la partie —</span>
+                <DsButton Label="Rejouer" OnClick="GoToLobby" />
+            </div>
         </DsBottomScreen>
     </BottomScreen>
 </DsConsole>
@@ -24,6 +34,14 @@
         if (Store.CurrentGame is null)
         {
             Navigation.NavigateTo("/lobby");
+        }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender && Store.CurrentGame is { WinnerId: { } winnerId } game)
+        {
+            Audio.Play(winnerId == game.Self.PlayerId ? "victory" : "defeat");
         }
     }
 
