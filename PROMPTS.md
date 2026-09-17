@@ -681,3 +681,43 @@ sources de l'app.
 
 **Résultat observé :** `dotnet build` → 0 avertissement, `dotnet test` → 47/47. Le seul
 JavaScript restant dans l'application est le runtime Blazor lui-même.
+
+## Le conteneur `app` restait `unhealthy` malgré un nginx qui répondait
+
+**Prompt :** « Vérifie si la configuration docker est fonctionnelle et teste le jeu. »
+
+**Décision et justification :**
+
+1. **Symptôme.** `docker compose up --build` réussissait, l'API passait `healthy`, mais `app`
+   restait `unhealthy` en boucle (`docker inspect` : `wget: can't connect to remote host:
+   Connection refused` toutes les 30 s), alors que `curl http://localhost:8080/` depuis l'hôte
+   répondait `200` sans problème.
+2. **Cause.** Le `HEALTHCHECK` de `Naval.App.Dockerfile` teste `http://localhost:80/` *depuis
+   l'intérieur du conteneur*. Dans l'image Alpine, `/etc/hosts` liste `::1 localhost` avant
+   `127.0.0.1 localhost` : `wget` résout donc `localhost` en IPv6 d'abord. Or `naval-app.conf`
+   ne déclare que `listen 80;` (IPv4 seul) — le script `10-listen-on-ipv6-by-default.sh` de
+   l'image nginx officielle ne complète que la config *packagée par défaut*, qu'il détecte
+   comme différente de la nôtre, donc il ne touche pas à `naval-app.conf`. Le check tapait donc
+   toujours sur un port fermé côté IPv6, indépendamment de l'état réel du service.
+3. **Correctif choisi : forcer `127.0.0.1` dans le `HEALTHCHECK`, plutôt que faire écouter
+   nginx en dual-stack.** Ajouter `listen [::]:80;` aurait aussi marché, mais aurait élargi la
+   surface d'écoute du conteneur pour un problème qui n'existe que dans le check lui-même — le
+   trafic réel passe par la publication de port Docker, pas par le loopback IPv6 interne.
+   Changer une seule ligne du `CMD` du `HEALTHCHECK` est le correctif le plus minimal qui cible
+   la vraie cause (résolution de nom), sans toucher au contrat réseau du service.
+
+**Scénario de vérification :** Avant correctif — `docker exec app sh -c "wget -S -O-
+http://localhost:80/"` → `Connecting to localhost:80 ([::1]:80)` puis `Connection refused` ;
+le même `wget` vers `http://127.0.0.1:80/` répondait `200`. Après correctif et rebuild
+(`docker compose up --build -d app`) — `docker compose ps` : les deux services `healthy` en
+moins de 15 s. Partie complète ensuite jouée par l'API HTTP (`POST /api/games` en solo vs IA,
+déploiement de flotte, `ready`, plusieurs `POST /shots`) : tour qui alterne joueur/IA,
+`targetBoard` adverse toujours vide hors cases révélées (aucune fuite de position), un second
+tir sur la même case → `409 CELL_ALREADY_TARGETED`, requête sans en-tête → `401 MISSING_TOKEN`,
+les deux en `ProblemDetails` avec `code`.
+
+**Résultat observé :** `docker compose ps` → `api` et `app` tous deux `(healthy)`. Jeu jouable
+de bout en bout via l'API dockerisée ; invariants de non-fuite et de codes d'erreur respectés.
+Note pour le binôme : le hook `UserPromptSubmit` censé pré-remplir ce journal n'est câblé dans
+aucun `settings.json` (projet ou global) — cette entrée a été ajoutée à la main, faute de
+brouillon à compléter.

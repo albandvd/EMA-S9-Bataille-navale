@@ -38,8 +38,10 @@ RUN chmod +x /docker-entrypoint.d/30-inject-api-base-url.sh
 ENV API_BASE_URL=http://localhost:5119/
 EXPOSE 80
 
+# 127.0.0.1, pas localhost : /etc/hosts résout localhost en ::1 d'abord, et nginx n'écoute
+# qu'en IPv4 ici (voir naval-app.conf) — wget échouerait en connection refused sur ::1.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget -q --spider http://localhost:80/ || exit 1
+    CMD wget -q --spider http://127.0.0.1:80/ || exit 1
 
 # L'image nginx officielle exécute automatiquement tout script de /docker-entrypoint.d/
 # avant de démarrer nginx — pas besoin de surcharger ENTRYPOINT/CMD.
