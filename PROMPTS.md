@@ -681,3 +681,51 @@ sources de l'app.
 
 **Résultat observé :** `dotnet build` → 0 avertissement, `dotnet test` → 47/47. Le seul
 JavaScript restant dans l'application est le runtime Blazor lui-même.
+
+## Les écrans de la console gardent une taille fixe quel que soit le contenu
+
+**Prompt :** « A de nombreux moment la taille de l'écran de la ds change en fonction de ce qui
+est affiché dedans. J'aimerai que l'écran et la ds garde tout le temps la meme taille quelque
+soit le contenu qui est affiché dedans. »
+
+**Décision et justification :**
+
+1. **Dalle à ratio fixe, contenu absolu.** `.ds-screen` n'avait qu'un `min-height: 180px` : sa
+   hauteur suivait le contenu (titre seul au lobby, grille + journal en bataille). Elle est
+   désormais dimensionnée par `aspect-ratio: 16 / 10` — sa hauteur ne dépend plus que de la
+   largeur de la console — et `container-type: size` coupe toute remontée de taille depuis
+   les enfants. Le `.ds-screen__content` passe en `position: absolute; inset: 0` avec
+   `overflow-y: auto` : ce qui dépasse défile *dans* la dalle, jamais en dehors. Le 4:3 d'une
+   vraie DS a été essayé puis écarté : deux dalles 4:3 à 920 px de large donnaient une console de
+   1 310 px de haut, injouable sans défiler la page.
+2. **Deux dalles identiques.** Le capot avait des colonnes latérales de 34 px et le socle de
+   92 px : les écrans faisaient 824 px et 704 px de large. Les deux moitiés partagent maintenant
+   la même grille `92px 1fr 92px`, d'où deux dalles strictement égales (651 × 409 px à 920 px).
+3. **Largeur de la console indépendante du contenu.** Avec le confinement de taille, la console
+   perdait sa largeur intrinsèque et s'effondrait à 328 px (le `#app` de Blazor, item d'une
+   grille `place-items: center`, se rétractait sur son contenu). `#app` prend désormais
+   `width: 100%` et centre la console ; `.ds-console` passe en `box-sizing: border-box`, ce qui
+   supprime au passage un débordement horizontal de 15 px sur mobile.
+4. **La grille se borne à la hauteur de la dalle.** `.grid-frame` prend
+   `min(100%, 380px, calc(100cqh - 115px))` : les 115 px couvrent le titre, les marges et la
+   ligne des lettres. À 920 px la grille tient sans défilement dans les deux écrans.
+5. **Écran bas de bataille en deux colonnes.** Grille + énergie + charge + pouvoirs + journal
+   empilés ne tiennent pas dans une dalle 16:10 : `Battle.razor` enveloppe grille et
+   instruments dans `.battle-panel` (grille à gauche, colonne d'instruments à droite, le journal
+   s'étirant sur la hauteur de la grille). Pure disposition : aucune règle de jeu déplacée.
+   Sous 760 px, retour à une colonne.
+6. **Compromis mobile assumé.** À 400 px de large la dalle fait 323 × 204 px : une grille 10 × 10
+   ne peut pas descendre sous la largeur des lettres de colonnes, donc le contenu défile
+   légèrement à l'intérieur de l'écran. C'est le comportement voulu (la console ne bouge pas),
+   la cible principale restant le bureau.
+
+**Scénario de vérification :** Application lancée (API + front), parcours accueil → lobby →
+déploiement (5 navires posés par script) → bataille, en mesurant `.ds-screen` et `.ds-console`
+via `getBoundingClientRect` à chaque page. Avant correctif : dalles de 179 × 135 / 59 × 45 px
+(effondrement) puis 824 × 619 / 704 × 529 px. Après : 651 × 409 px pour les deux dalles sur les
+quatre pages, console à 920 px, `scrollHeight == clientHeight` (aucun défilement interne) sur
+accueil, déploiement et bataille ; `scrollWidth` du document égal à la largeur de la fenêtre
+à 1 280 px comme à 400 px. Captures dans `.playwright-mcp/` (index, deploy, battle, mobile).
+
+**Résultat observé :** La console et ses deux écrans ont la même taille sur toutes les pages ;
+seul le contenu change. `dotnet build` → 0 avertissement, `dotnet test` → 47/47.
