@@ -9,7 +9,9 @@
     grid-template-rows: auto 1fr;
     gap: 4px;
     align-self: center;
-    width: min(100%, 380px);
+    /* Bornée par la hauteur de la dalle (ratio fixe) : titre, marges et ligne
+       des lettres prennent ~115px, le reste revient à la grille carrée. */
+    width: min(100%, 380px, calc(100cqh - 115px));
 }
 
 .grid-labels {

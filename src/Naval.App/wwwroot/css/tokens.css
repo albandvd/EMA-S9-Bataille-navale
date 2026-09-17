@@ -77,6 +77,14 @@ body {
   overflow-x: hidden;
 }
 
+/* Le conteneur Blazor prend toute la largeur : la console s'y centre et sa
+   largeur ne dépend jamais de son contenu (les dalles ont une taille fixe). */
+#app {
+  width: 100%;
+  display: grid;
+  justify-items: center;
+}
+
 /* Grain subtil pour casser les aplats */
 body::before {
   content: "";

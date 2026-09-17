@@ -5,6 +5,7 @@
 .ds-console {
     position: relative;
     width: min(920px, 100%);
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     padding: 22px 26px 28px;
@@ -38,8 +39,9 @@
 .ds-console__lid {
     position: relative;
     display: grid;
-    grid-template-columns: 34px 1fr 34px;
-    gap: 14px;
+    /* Mêmes colonnes que le socle : les deux dalles ont exactement la même taille */
+    grid-template-columns: 92px 1fr 92px;
+    gap: 16px;
     align-items: center;
     padding-bottom: 16px;
 }
@@ -242,9 +244,13 @@
    Écrans — dalle, phosphore, scanlines, reflet
    ============================================================ */
 
+/* La dalle a un ratio fixe : sa hauteur dépend uniquement de la largeur de la
+   console, jamais du contenu affiché. Le contenu est positionné en absolu et
+   défile à l'intérieur s'il dépasse. */
 .ds-screen {
     position: relative;
-    min-height: 180px;
+    aspect-ratio: 16 / 10;
+    container-type: size;
     border-radius: var(--radius-screen);
     padding: 0;
     background: #0a0f1e;
@@ -257,14 +263,18 @@
 }
 
 .ds-screen__content {
-    position: relative;
+    position: absolute;
+    inset: 0;
     z-index: 1;
     padding: 16px 18px 18px;
     display: flex;
     flex-direction: column;
     gap: 12px;
-    min-height: 100%;
     box-sizing: border-box;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--sea-light) transparent;
 }
 
 .ds-screen--top .ds-screen__content {
@@ -689,6 +699,36 @@ select.ds-field__control { cursor: pointer; }
 }
 
 /* ============================================================
+   Écran bas de bataille — grille à gauche, instruments à droite
+   ============================================================ */
+
+/* Deux colonnes pour tenir dans la dalle 4:3 sans défilement sur desktop */
+.battle-panel {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 300px);
+    gap: 16px;
+    align-items: stretch;
+}
+
+.battle-panel__side {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+}
+
+.battle-panel__side .event-log {
+    flex: 1;
+    min-height: 60px;
+}
+
+@media (max-width: 760px) {
+    .battle-panel { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
    Journal des événements — terminal sonar
    ============================================================ */
 
@@ -737,7 +777,6 @@ select.ds-field__control { cursor: pointer; }
 .title-screen {
     position: relative;
     flex: 1;
-    min-height: 250px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -876,7 +915,6 @@ select.ds-field__control { cursor: pointer; }
     align-items: center;
     justify-content: center;
     gap: 10px;
-    min-height: 200px;
 }
 
 .ds-screen h2.result-banner__title {
