@@ -15,6 +15,7 @@ public static class GameMapper
             Mode: game.Mode,
             Status: game.Status,
             JoinCode: game.JoinCode,
+            FleetPreset: game.FleetPreset,
             TurnNumber: game.TurnNumber,
             CurrentPlayerId: game.CurrentPlayerId?.Value,
             TurnDeadlineUtc: game.TurnDeadlineUtc,
@@ -117,6 +118,45 @@ public static class GameMapper
             ActorId: evt.ActorId?.Value,
             Message: evt.Message,
             Data: null);
+    }
+
+    public static SpectatorViewDto ToSpectatorViewDto(Game game)
+    {
+        return new SpectatorViewDto(
+            GameId: game.Id.Value,
+            Mode: game.Mode,
+            Status: game.Status,
+            TurnNumber: game.TurnNumber,
+            CurrentPlayerId: game.CurrentPlayerId?.Value,
+            TurnDeadlineUtc: game.TurnDeadlineUtc,
+            WinnerId: game.WinnerId,
+            Player1: ToSpectatorPlayerViewDto(game.Player1, game.Player2),
+            Player2: ToSpectatorPlayerViewDto(game.Player2, game.Player1),
+            RecentEvents: game.Events.TakeLast(20).Select(ToEventDto).ToList());
+    }
+
+    private static SpectatorPlayerViewDto ToSpectatorPlayerViewDto(PlayerState player, PlayerState opponent)
+    {
+        // Ce que l'ADVERSAIRE a découvert de ce joueur — jamais la flotte propre du joueur.
+        var board = player.Fleet is not null
+            ? opponent.OutgoingBoard.BuildTargetView(player.Fleet)
+            : BuildEmptyView(player.IncomingBoard.Width, player.IncomingBoard.Height);
+
+        var sunkShips = player.Fleet?.Ships
+            .Where(s => s.IsSunk)
+            .Select(ToShipStateDtoSunk)
+            .ToList() ?? [];
+
+        return new SpectatorPlayerViewDto(
+            PlayerId: player.Id.Value,
+            Name: player.Name,
+            Slot: player.Slot,
+            IsConnected: player.IsConnected,
+            IsAi: player.IsAi,
+            ShipsRemaining: player.Fleet?.Ships.Count(s => !s.IsSunk) ?? 0,
+            ShipsTotal: player.Fleet?.Ships.Count ?? 0,
+            Board: ToBoardViewDto(board, player.IncomingBoard.Width, player.IncomingBoard.Height),
+            SunkShips: sunkShips);
     }
 
     public static OpenGameDto ToOpenGameDto(GameSummary s) => new(

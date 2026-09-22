@@ -1,0 +1,61 @@
+@page "/waiting"
+@inject GameStateStore Store
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<DsConsole>
+    <TopScreen>
+        <DsTopScreen>
+            <h2>En attente d'un adversaire</h2>
+            <DsErrorBanner Problem="Store.LastError" />
+        </DsTopScreen>
+    </TopScreen>
+    <BottomScreen>
+        <DsBottomScreen>
+            @if (Store.CurrentGame is { JoinCode: { } joinCode })
+            {
+                <p class="waiting-hint">Communiquez ce code à l'oral :</p>
+                <p class="join-code">@joinCode</p>
+            }
+            else
+            {
+                <p class="waiting-hint">Partie publique — visible dans le salon.</p>
+            }
+            <p class="waiting-spinner" aria-hidden="true">···</p>
+            <DsButton Label="Annuler" OnClick="GoToLobby" />
+        </DsBottomScreen>
+    </BottomScreen>
+</DsConsole>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Store.StateChanged += OnStoreChanged;
+
+        if (Store.CurrentGame is null)
+        {
+            Navigation.NavigateTo("/lobby");
+            return;
+        }
+
+        NavigateIfOpponentJoined();
+    }
+
+    private void NavigateIfOpponentJoined()
+    {
+        if (Store.CurrentGame is { Status: not GameStatus.AwaitingOpponent })
+        {
+            Navigation.NavigateTo("/deploy");
+        }
+    }
+
+    private void GoToLobby() => Navigation.NavigateTo("/lobby");
+
+    private void OnStoreChanged()
+    {
+        NavigateIfOpponentJoined();
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Store.StateChanged -= OnStoreChanged;
+}

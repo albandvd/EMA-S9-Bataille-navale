@@ -55,7 +55,12 @@ public sealed class GameService
         {
             var p2Id = PlayerId.New();
             p2 = new PlayerState(p2Id, "En attente…", PlayerSlot.Two,
-                Guid.NewGuid().ToString(), req.GridWidth, req.GridHeight);
+                Guid.NewGuid().ToString(), req.GridWidth, req.GridHeight)
+            {
+                // Emplacement pas encore occupé : IsConnected par défaut (!isAi) vaudrait sinon
+                // true avant même qu'un adversaire existe, ce qui fausserait la présence (E-05).
+                IsConnected = false
+            };
         }
 
         var game = new Game(
@@ -212,40 +217,9 @@ public sealed class GameService
 
             var target = game.GetOpponent(shooter.Id);
             var coord = new Coordinate(req.Target.X, req.Target.Y);
-
-            var (shotResult, errorCode) = GameEngine.ExecuteShot(shooter, target, coord);
-
-            if (errorCode is not null)
-                throw new GameException(errorCode, GetShotErrorMessage(errorCode),
-                    isConflict: errorCode == ErrorCodes.CellAlreadyTargeted);
-
-            game.TurnNumber++;
-            game.AddEvent(new ShotFiredEvent(
-                game.NextSequence(), DateTimeOffset.UtcNow, shooter.Id, coord, shotResult,
-                FormatShotMessage(shooter.Name, coord, shotResult.Outcome)));
-
-            Guid? nextPlayerId = null;
-            if (GameEngine.IsGameOver(game))
-            {
-                var winner = GameEngine.FindWinner(game)!;
-                game.Status = GameStatus.Finished;
-                game.WinnerId = winner.Id.Value;
-                game.CurrentPlayerId = null;
-
-                game.AddEvent(new GameOverEvent(
-                    game.NextSequence(), DateTimeOffset.UtcNow, winner.Id,
-                    "FleetDestroyed",
-                    $"Partie terminée. {winner.Name} remporte la victoire."));
-            }
-            else
-            {
-                AdvanceTurn(game, shooter.Id);
-                nextPlayerId = game.CurrentPlayerId?.Value;
-            }
+            var dto = ResolveShot(game, shooter, target, coord);
 
             await _store.SaveAsync(game, ct);
-
-            var dto = GameMapper.ToShotResultDto(game, shooter, coord, shotResult, nextPlayerId);
             return (dto, game);
         }
         finally
@@ -256,7 +230,7 @@ public sealed class GameService
 
     // ─── Tour IA ───
 
-    public async Task<ShotResultDto?> PlayAiTurnAsync(Guid gameId, CancellationToken ct)
+    public async Task<(ShotResultDto result, Game game)?> PlayAiTurnAsync(Guid gameId, CancellationToken ct)
     {
         var game = await _store.GetAsync(gameId, ct);
         if (game is null || game.Status != GameStatus.InProgress) return null;
@@ -274,34 +248,106 @@ public sealed class GameService
             var humanPlayer = game.Player1;
 
             var coord = ai.ChooseTarget(aiPlayer, humanPlayer);
-            var (shotResult, _) = GameEngine.ExecuteShot(aiPlayer, humanPlayer, coord);
-
-            game.TurnNumber++;
-            game.AddEvent(new ShotFiredEvent(
-                game.NextSequence(), DateTimeOffset.UtcNow, aiPlayer.Id, coord, shotResult,
-                FormatShotMessage("IA", coord, shotResult.Outcome)));
-
-            Guid? nextPlayerId = null;
-            if (GameEngine.IsGameOver(game))
-            {
-                var winner = GameEngine.FindWinner(game)!;
-                game.Status = GameStatus.Finished;
-                game.WinnerId = winner.Id.Value;
-                game.CurrentPlayerId = null;
-
-                game.AddEvent(new GameOverEvent(
-                    game.NextSequence(), DateTimeOffset.UtcNow, winner.Id,
-                    "FleetDestroyed",
-                    $"Partie terminée. {winner.Name} remporte la victoire."));
-            }
-            else
-            {
-                AdvanceTurn(game, aiPlayer.Id);
-                nextPlayerId = game.CurrentPlayerId?.Value;
-            }
+            var dto = ResolveShot(game, aiPlayer, humanPlayer, coord, shooterLabel: "IA");
 
             await _store.SaveAsync(game, ct);
-            return GameMapper.ToShotResultDto(game, aiPlayer, coord, shotResult, nextPlayerId);
+            return (dto, game);
+        }
+        finally
+        {
+            game.Lock.Release();
+        }
+    }
+
+    // ─── Timer de tour (E-07) ───
+
+    /// <summary>
+    /// Tir aléatoire automatique quand la date limite du tour est dépassée. Ne s'applique
+    /// jamais à l'IA : son tour se résout de façon synchrone dans <see cref="PlayAiTurnAsync"/>,
+    /// bien avant qu'un délai humain ne puisse expirer.
+    /// </summary>
+    public async Task<ShotResultDto?> PlayTimeoutShotAsync(Guid gameId, CancellationToken ct)
+    {
+        var game = await _store.GetAsync(gameId, ct);
+        if (game is null || game.Status != GameStatus.InProgress) return null;
+        if (game.CurrentPlayerId is not { } currentId) return null;
+
+        await game.Lock.WaitAsync(ct);
+        try
+        {
+            if (game.Status != GameStatus.InProgress) return null;
+            if (game.TurnDeadlineUtc is not { } deadline || deadline > DateTimeOffset.UtcNow) return null;
+
+            var shooter = game.GetPlayerById(currentId);
+            if (shooter is null || shooter.IsAi) return null;
+
+            var target = game.GetOpponent(shooter.Id);
+            var coord = new RandomAi().ChooseTarget(shooter, target);
+            var dto = ResolveShot(game, shooter, target, coord, shooterLabel: $"{shooter.Name} (temps écoulé)");
+
+            await _store.SaveAsync(game, ct);
+            return dto;
+        }
+        finally
+        {
+            game.Lock.Release();
+        }
+    }
+
+    // ─── Présence (E-05) ───
+
+    public async Task SetPresenceAsync(Guid gameId, Guid playerId, bool connected, CancellationToken ct)
+    {
+        var game = await _store.GetAsync(gameId, ct);
+        if (game is null) return;
+
+        await game.Lock.WaitAsync(ct);
+        try
+        {
+            var player = game.GetPlayerById(new PlayerId(playerId));
+            if (player is null || player.IsAi || player.IsConnected == connected) return;
+
+            player.IsConnected = connected;
+            await _store.SaveAsync(game, ct);
+        }
+        finally
+        {
+            game.Lock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Grâce de déconnexion (E-05) expirée sans reconnexion : la partie est abandonnée. Ne fait
+    /// rien si le joueur s'est reconnecté entretemps (IsConnected redevenu true) ou si la partie
+    /// est déjà terminée.
+    /// </summary>
+    public async Task<GameOverDto?> AbandonDueToDisconnectionAsync(
+        Guid gameId, Guid disconnectedPlayerId, CancellationToken ct)
+    {
+        var game = await _store.GetAsync(gameId, ct);
+        if (game is null) return null;
+
+        await game.Lock.WaitAsync(ct);
+        try
+        {
+            if (game.Status is GameStatus.Finished or GameStatus.Abandoned) return null;
+
+            var quitter = game.GetPlayerById(new PlayerId(disconnectedPlayerId));
+            if (quitter is null || quitter.IsConnected) return null;
+
+            var winner = game.GetOpponent(quitter.Id);
+            game.Status = GameStatus.Abandoned;
+            game.WinnerId = winner.Id.Value;
+            game.CurrentPlayerId = null;
+            game.TurnDeadlineUtc = null;
+
+            game.AddEvent(new GameOverEvent(
+                game.NextSequence(), DateTimeOffset.UtcNow, winner.Id,
+                "Disconnected",
+                $"{quitter.Name} s'est déconnecté trop longtemps. {winner.Name} remporte la victoire."));
+
+            await _store.SaveAsync(game, ct);
+            return GameMapper.ToGameOverDto(game, "Disconnected");
         }
         finally
         {
@@ -372,7 +418,69 @@ public sealed class GameService
         return summaries.Take(limit).Select(GameMapper.ToOpenGameDto).ToList();
     }
 
+    /// <summary>Résout le joueur associé à un token, pour un appelant qui a déjà sa propre
+    /// réponse à construire (hub SignalR, emotes) sans dupliquer la logique de token.</summary>
+    public async Task<(Game game, PlayerState player)> ResolvePlayerAsync(
+        Guid gameId, string playerToken, CancellationToken ct)
+    {
+        var game = await RequireGameAsync(gameId, ct);
+        var player = game.GetPlayerByToken(playerToken)
+            ?? throw new GameException(ErrorCodes.NotAPlayer, "Token invalide.", isForbidden: true);
+        return (game, player);
+    }
+
+    // ─── Spectateur (E-09) ───
+
+    public async Task<SpectatorViewDto> GetSpectatorViewAsync(Guid gameId, CancellationToken ct)
+    {
+        var game = await RequireGameAsync(gameId, ct);
+        return GameMapper.ToSpectatorViewDto(game);
+    }
+
     // ─── Helpers privés ───
+
+    /// <summary>
+    /// Résout un tir, avance le tour ou termine la partie. Partagé par <see cref="FireAsync"/>,
+    /// <see cref="PlayAiTurnAsync"/> et <see cref="PlayTimeoutShotAsync"/> pour que la
+    /// résolution d'un tir ne vive qu'à un seul endroit, quelle que soit la façon dont il a été
+    /// déclenché.
+    /// </summary>
+    private ShotResultDto ResolveShot(
+        Game game, PlayerState shooter, PlayerState target, Coordinate coord, string? shooterLabel = null)
+    {
+        var (shotResult, errorCode) = GameEngine.ExecuteShot(shooter, target, coord);
+
+        if (errorCode is not null)
+            throw new GameException(errorCode, GetShotErrorMessage(errorCode),
+                isConflict: errorCode == ErrorCodes.CellAlreadyTargeted);
+
+        game.TurnNumber++;
+        game.AddEvent(new ShotFiredEvent(
+            game.NextSequence(), DateTimeOffset.UtcNow, shooter.Id, coord, shotResult,
+            FormatShotMessage(shooterLabel ?? shooter.Name, coord, shotResult.Outcome)));
+
+        Guid? nextPlayerId = null;
+        if (GameEngine.IsGameOver(game))
+        {
+            var winner = GameEngine.FindWinner(game)!;
+            game.Status = GameStatus.Finished;
+            game.WinnerId = winner.Id.Value;
+            game.CurrentPlayerId = null;
+            game.TurnDeadlineUtc = null;
+
+            game.AddEvent(new GameOverEvent(
+                game.NextSequence(), DateTimeOffset.UtcNow, winner.Id,
+                "FleetDestroyed",
+                $"Partie terminée. {winner.Name} remporte la victoire."));
+        }
+        else
+        {
+            AdvanceTurn(game, shooter.Id);
+            nextPlayerId = game.CurrentPlayerId?.Value;
+        }
+
+        return GameMapper.ToShotResultDto(game, shooter, coord, shotResult, nextPlayerId);
+    }
 
     private async Task<Game> RequireGameAsync(Guid id, CancellationToken ct)
     {
@@ -387,6 +495,7 @@ public sealed class GameService
         game.Status = GameStatus.InProgress;
         game.TurnNumber = 1;
         game.CurrentPlayerId = game.Player1.Id;
+        game.TurnDeadlineUtc = ComputeTurnDeadline(game);
 
         game.AddEvent(new TurnChangedEvent(
             game.NextSequence(), DateTimeOffset.UtcNow, game.Player1.Id, 1,
@@ -397,11 +506,18 @@ public sealed class GameService
     {
         var next = game.GetOpponent(currentShooter);
         game.CurrentPlayerId = next.Id;
+        game.TurnDeadlineUtc = ComputeTurnDeadline(game);
 
         game.AddEvent(new TurnChangedEvent(
             game.NextSequence(), DateTimeOffset.UtcNow, next.Id, game.TurnNumber,
             $"Tour de {next.Name}."));
     }
+
+    /// <summary>E-07 : null désactive le timer (TurnTimeoutSeconds == 0).</summary>
+    private static DateTimeOffset? ComputeTurnDeadline(Game game) =>
+        game.TurnTimeoutSeconds > 0
+            ? DateTimeOffset.UtcNow.AddSeconds(game.TurnTimeoutSeconds)
+            : null;
 
     private static string GenerateJoinCode(Random rng)
     {

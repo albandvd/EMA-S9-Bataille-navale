@@ -1,4 +1,5 @@
 @page "/"
+@inject GameStateStore Store
 @inject NavigationManager Navigation
 
 <PageTitle>Bataille Navale</PageTitle>
@@ -21,11 +22,39 @@
             <div class="press-start">
                 <span class="press-start__hint">— Prêt à appareiller —</span>
                 <DsButton Label="Nouvelle partie" OnClick="GoToLobby" />
+                @if (_resumableGameFound)
+                {
+                    <DsButton Label="Reprendre la partie" OnClick="ResumeGame" />
+                }
             </div>
         </DsBottomScreen>
     </BottomScreen>
 </DsConsole>
 
 @code {
+    private bool _resumableGameFound;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // E-06 : ne redirige jamais automatiquement — l'utilisateur choisit, au cas où il
+        // préfère simplement démarrer une partie neuve plutôt que reprendre l'ancienne.
+        var resumed = await Store.TryResumeSessionAsync();
+        _resumableGameFound = resumed && Store.CurrentGame?.Status
+            is Naval.Shared.Contracts.GameStatus.AwaitingOpponent
+            or Naval.Shared.Contracts.GameStatus.AwaitingDeployment
+            or Naval.Shared.Contracts.GameStatus.InProgress;
+    }
+
     private void GoToLobby() => Navigation.NavigateTo("/lobby");
+
+    private void ResumeGame()
+    {
+        Navigation.NavigateTo(Store.CurrentGame?.Status switch
+        {
+            Naval.Shared.Contracts.GameStatus.InProgress => "/battle",
+            Naval.Shared.Contracts.GameStatus.AwaitingDeployment => "/deploy",
+            Naval.Shared.Contracts.GameStatus.AwaitingOpponent => "/waiting",
+            _ => "/lobby"
+        });
+    }
 }

@@ -12,6 +12,15 @@
     </TopScreen>
     <BottomScreen>
         <DsBottomScreen>
+            <div class="ds-mode-tabs" role="tablist">
+                <button class="ds-mode-tab @(_mode == GameMode.SinglePlayer ? "ds-mode-tab--active" : null)"
+                        @onclick="() => _mode = GameMode.SinglePlayer">Solo</button>
+                <button class="ds-mode-tab @(_mode == GameMode.PrivateOnline ? "ds-mode-tab--active" : null)"
+                        @onclick="() => _mode = GameMode.PrivateOnline">Partie privée</button>
+                <button class="ds-mode-tab @(_mode == GameMode.PublicOnline ? "ds-mode-tab--active" : null)"
+                        @onclick="() => _mode = GameMode.PublicOnline">Partie publique</button>
+            </div>
+
             <div class="ds-form">
                 <label class="ds-field">
                     <span class="ds-field__label">Pseudo</span>
@@ -28,7 +37,23 @@
                         <option value="Skirmish">Skirmish</option>
                     </select>
                 </label>
-                <DsButton Label="Démarrer" OnClick="StartGame" />
+                @if (_mode != GameMode.SinglePlayer)
+                {
+                    <label class="ds-field">
+                        <span class="ds-field__label">Timer de tour (0 = désactivé)</span>
+                        <input class="ds-field__control" type="number" @bind="_turnTimeoutSeconds" min="0" max="120" />
+                    </label>
+                }
+                <DsButton Label="@StartLabel" OnClick="StartGame" />
+            </div>
+
+            <div class="ds-lobby-links">
+                <button class="ds-lobby-link" @onclick="GoToJoinByCode">
+                    J'ai un code — rejoindre une partie
+                </button>
+                <button class="ds-lobby-link" @onclick="GoToPublicBrowser">
+                    Parcourir le salon public
+                </button>
             </div>
         </DsBottomScreen>
     </BottomScreen>
@@ -38,21 +63,37 @@
     private string _playerName = "Joueur";
     private int _gridSize = 10;
     private string _fleetPreset = "Classic";
+    private int _turnTimeoutSeconds = 30;
+    private GameMode _mode = GameMode.SinglePlayer;
+
+    private string StartLabel => _mode switch
+    {
+        GameMode.SinglePlayer => "Démarrer",
+        GameMode.PrivateOnline => "Créer la partie privée",
+        _ => "Créer la partie publique"
+    };
 
     protected override void OnInitialized() => Store.StateChanged += OnStoreChanged;
 
     private async Task StartGame()
     {
-        var request = new CreateGameRequest(_playerName, GameMode.SinglePlayer, _gridSize, _gridSize,
-            _fleetPreset, AiLevel.Random, [], 0, null);
+        var timeout = _mode == GameMode.SinglePlayer ? 0 : _turnTimeoutSeconds;
+        var request = new CreateGameRequest(_playerName, _mode, _gridSize, _gridSize,
+            _fleetPreset, _mode == GameMode.SinglePlayer ? AiLevel.Random : null, [], timeout, null);
         await Store.CreateGameAsync(request);
 
-        if (Store.CurrentGame is not null)
+        if (Store.CurrentGame is null)
         {
-            await Store.LoadFleetPresetAsync(_fleetPreset);
-            Navigation.NavigateTo("/deploy");
+            return;
         }
+
+        await Store.LoadFleetPresetAsync(_fleetPreset);
+        Navigation.NavigateTo(_mode == GameMode.SinglePlayer ? "/deploy" : "/waiting");
     }
+
+    private void GoToJoinByCode() => Navigation.NavigateTo("/join");
+
+    private void GoToPublicBrowser() => Navigation.NavigateTo("/browse");
 
     private void OnStoreChanged() => InvokeAsync(StateHasChanged);
 

@@ -156,6 +156,11 @@ public sealed record GameStateDto(
     GameMode        Mode,
     GameStatus      Status,
     string?         JoinCode,
+    /// <summary>
+    /// Nom du preset de flotte (cf. GET /api/catalog/fleets). Indispensable au joueur qui a
+    /// rejoint par code ou depuis le salon public : lui seul n'a pas choisi ce preset.
+    /// </summary>
+    string          FleetPreset,
     int             TurnNumber,
     Guid?           CurrentPlayerId,
     DateTimeOffset? TurnDeadlineUtc,
@@ -165,6 +170,37 @@ public sealed record GameStateDto(
     IReadOnlyList<GameEventDto> RecentEvents,
     /// Numéro du dernier événement inclus. Sert à reprendre le flux après reconnexion.
     int             EventCursor);
+
+// ─────────────────────────────── Spectateur (E-09) ───────────────────────────────
+
+/// <summary>
+/// Vue d'un joueur pour un spectateur : uniquement ce que SON ADVERSAIRE a découvert de sa
+/// flotte (même encodage que <see cref="OpponentViewDto.TargetBoard"/>). Jamais la position
+/// d'un navire non coulé, y compris pour un tiers qui ne joue pas.
+/// </summary>
+public sealed record SpectatorPlayerViewDto(
+    Guid    PlayerId,
+    string  Name,
+    PlayerSlot Slot,
+    bool    IsConnected,
+    bool    IsAi,
+    int     ShipsRemaining,
+    int     ShipsTotal,
+    BoardViewDto Board,
+    IReadOnlyList<ShipStateDto> SunkShips);
+
+/// <summary>Les deux grilles telles que chaque joueur les a révélées à l'autre. Lecture seule.</summary>
+public sealed record SpectatorViewDto(
+    Guid            GameId,
+    GameMode        Mode,
+    GameStatus      Status,
+    int             TurnNumber,
+    Guid?           CurrentPlayerId,
+    DateTimeOffset? TurnDeadlineUtc,
+    Guid?           WinnerId,
+    SpectatorPlayerViewDto Player1,
+    SpectatorPlayerViewDto Player2,
+    IReadOnlyList<GameEventDto> RecentEvents);
 
 // ─────────────────────────────── Résultats d'action ───────────────────────────────
 

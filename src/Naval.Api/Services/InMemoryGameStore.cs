@@ -51,4 +51,12 @@ public sealed class InMemoryGameStore : IGameStore
         _store.TryRemove(id, out _);
         return Task.CompletedTask;
     }
+
+    public Task<IReadOnlyList<Game>> ListInProgressAsync(CancellationToken ct = default)
+    {
+        IReadOnlyList<Game> inProgress = _store.Values
+            .Where(g => g.Status == GameStatus.InProgress)
+            .ToList();
+        return Task.FromResult(inProgress);
+    }
 }

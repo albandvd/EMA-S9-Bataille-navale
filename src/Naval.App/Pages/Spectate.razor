@@ -1,0 +1,85 @@
+@page "/spectate/{GameId:guid}"
+@inject GameStateStore Store
+@implements IAsyncDisposable
+
+<DsConsole>
+    <TopScreen>
+        <DsTopScreen>
+            <h2>@(Store.Spectator?.Player2.Name ?? "Joueur 2")</h2>
+            @if (Store.Spectator is { } game)
+            {
+                <GridView Board="game.Player2.Board" />
+            }
+        </DsTopScreen>
+    </TopScreen>
+    <BottomScreen>
+        <DsBottomScreen>
+            <DsErrorBanner Problem="Store.LastError" />
+            @if (Store.Spectator is { } current)
+            {
+                <h2>@current.Player1.Name</h2>
+                <GridView Board="current.Player1.Board" />
+                <p class="waiting-hint">
+                    @StatusLabel(current.Status) — tour @current.TurnNumber
+                    @(current.Player1.IsConnected ? "" : " · Joueur 1 déconnecté")
+                    @(current.Player2.IsConnected ? "" : " · Joueur 2 déconnecté")
+                </p>
+            }
+        </DsBottomScreen>
+    </BottomScreen>
+</DsConsole>
+
+@code {
+    [Parameter] public Guid GameId { get; set; }
+
+    private const int PollIntervalMs = 2500;
+    private CancellationTokenSource? _cts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Store.StateChanged += OnStoreChanged;
+        _cts = new CancellationTokenSource();
+        await Store.LoadSpectatorViewAsync(GameId);
+        _ = PollAsync(_cts.Token);
+    }
+
+    private async Task PollAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(PollIntervalMs, ct);
+            }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
+
+            if (ct.IsCancellationRequested) return;
+            if (Store.Spectator is { Status: GameStatus.Finished or GameStatus.Abandoned }) return;
+
+            await Store.LoadSpectatorViewAsync(GameId);
+        }
+    }
+
+    private static string StatusLabel(GameStatus status) => status switch
+    {
+        GameStatus.AwaitingOpponent => "En attente d'un adversaire",
+        GameStatus.AwaitingDeployment => "Déploiement en cours",
+        GameStatus.InProgress => "Bataille en cours",
+        GameStatus.Finished => "Terminée",
+        GameStatus.Abandoned => "Abandonnée",
+        _ => status.ToString()
+    };
+
+    private void OnStoreChanged() => InvokeAsync(StateHasChanged);
+
+    public ValueTask DisposeAsync()
+    {
+        Store.StateChanged -= OnStoreChanged;
+        _cts?.Cancel();
+        _cts?.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

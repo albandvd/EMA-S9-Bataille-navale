@@ -952,3 +952,158 @@ select.ds-field__control { cursor: pointer; }
     text-transform: uppercase;
     color: var(--text-dim);
 }
+
+/* ============================================================
+   Multijoueur en ligne (E-A) — sélecteur de mode, salon, attente
+   ============================================================ */
+
+.ds-mode-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 16px;
+}
+
+.ds-mode-tab {
+    font-family: var(--font-ui);
+    font-size: .62rem;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    background: rgba(4, 18, 38, .8);
+    border: 1px solid var(--sea-light);
+    border-radius: 999px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: color .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+.ds-mode-tab:hover { color: var(--text); }
+
+.ds-mode-tab--active {
+    color: var(--sea-abyss);
+    background: var(--screen-glow);
+    border-color: var(--screen-glow);
+    box-shadow: 0 0 14px -2px rgba(142, 202, 230, .6);
+}
+
+.ds-lobby-links {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: center;
+    margin-top: 18px;
+}
+
+.ds-lobby-link {
+    background: none;
+    border: none;
+    color: var(--screen-glow);
+    font-family: var(--font-ui);
+    font-size: .62rem;
+    letter-spacing: .06em;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 4px;
+}
+
+.ds-lobby-link:hover { color: var(--text); }
+
+.waiting-hint {
+    text-align: center;
+    font-family: var(--font-data);
+    font-size: 1.1rem;
+    color: var(--text-dim);
+    margin: 4px 0;
+}
+
+.waiting-spinner {
+    text-align: center;
+    font-size: 1.4rem;
+    letter-spacing: .4em;
+    color: var(--screen-glow);
+    animation: led-breathe 1.2s ease-in-out infinite;
+}
+
+.join-code {
+    text-align: center;
+    font-family: var(--font-data);
+    font-size: 2.6rem;
+    letter-spacing: .3em;
+    color: var(--energy);
+    text-shadow: 0 0 18px var(--energy-glow);
+    margin: 4px 0 12px;
+}
+
+.open-games-list {
+    list-style: none;
+    margin: 12px 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 460px;
+    width: 100%;
+    align-self: center;
+}
+
+.open-games-list__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    background: rgba(4, 18, 38, .6);
+    border: 1px solid var(--sea-light);
+    border-radius: 10px;
+    padding: 8px 14px;
+    font-family: var(--font-data);
+    font-size: 1.05rem;
+}
+
+.open-games-list__row .ds-button {
+    padding: 6px 16px;
+    font-size: .6rem;
+}
+
+.turn-timer {
+    margin: 0;
+    font-family: var(--font-data);
+    font-size: 1.1rem;
+    color: var(--energy);
+    text-shadow: 0 0 8px var(--energy-glow);
+}
+
+.emote-picker {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+}
+
+.emote-picker__button {
+    font-family: var(--font-ui);
+    font-size: .55rem;
+    letter-spacing: .03em;
+    color: var(--text);
+    background: rgba(4, 18, 38, .8);
+    border: 1px solid var(--sea-light);
+    border-radius: 8px;
+    padding: 6px 4px;
+    cursor: pointer;
+    transition: border-color .15s ease, filter .15s ease;
+}
+
+.emote-picker__button:hover { border-color: var(--screen-glow); filter: brightness(1.1); }
+
+.emote-toast {
+    align-self: center;
+    background: rgba(6, 214, 160, .18);
+    border: 1px solid var(--charge);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-family: var(--font-data);
+    font-size: 1.05rem;
+    cursor: pointer;
+    box-shadow: 0 0 14px -2px var(--charge-glow);
+}

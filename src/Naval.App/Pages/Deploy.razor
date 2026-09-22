@@ -26,13 +26,20 @@
             {
                 <p class="ds-error-banner" role="alert">@_placementError</p>
             }
-            @if (Store.CurrentGame is not null)
+            @if (_fleetSubmitted)
             {
-                <ShipTray @ref="_shipTray" Fleet="_fleetToPlace"
-                          OnSelectionChanged="HandleSelectionChanged"
-                          OnOrientationChanged="HandleOrientationChanged" />
+                <p class="waiting-hint">Flotte déployée — en attente de l'adversaire…</p>
             }
-            <DsButton Label="Valider la flotte" OnClick="ConfirmFleet" />
+            else
+            {
+                @if (Store.CurrentGame is not null)
+                {
+                    <ShipTray @ref="_shipTray" Fleet="_fleetToPlace"
+                              OnSelectionChanged="HandleSelectionChanged"
+                              OnOrientationChanged="HandleOrientationChanged" />
+                }
+                <DsButton Label="Valider la flotte" OnClick="ConfirmFleet" />
+            }
         </DsBottomScreen>
     </BottomScreen>
 </DsConsole>
@@ -50,6 +57,7 @@
 
     private HashSet<CoordinateDto>? _previewCells;
     private bool _previewValid;
+    private bool _fleetSubmitted;
 
     protected override void OnInitialized()
     {
@@ -208,13 +216,30 @@
     private async Task ConfirmFleet()
     {
         await Store.PlaceFleetAsync(new PlaceFleetRequest(_placements));
+        if (Store.LastError is not null)
+        {
+            return;
+        }
+
+        _fleetSubmitted = true;
         if (Store.CurrentGame?.Status == GameStatus.InProgress)
         {
             Navigation.NavigateTo("/battle");
         }
     }
 
-    private void OnStoreChanged() => InvokeAsync(StateHasChanged);
+    private void OnStoreChanged()
+    {
+        // Partie en ligne : l'adversaire termine son propre déploiement de son côté, notifié
+        // ici en temps réel par le hub — sans ça, cette page resterait bloquée sur "en attente".
+        if (_fleetSubmitted && Store.CurrentGame?.Status == GameStatus.InProgress)
+        {
+            Navigation.NavigateTo("/battle");
+            return;
+        }
+
+        InvokeAsync(StateHasChanged);
+    }
 
     public void Dispose() => Store.StateChanged -= OnStoreChanged;
 }

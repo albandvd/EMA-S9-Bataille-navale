@@ -1,7 +1,9 @@
 using System.Text.Json.Serialization;
 using Naval.Api.Endpoints;
+using Naval.Api.Hubs;
 using Naval.Api.Infrastructure;
 using Naval.Api.Services;
+using Naval.Shared.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +11,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<IGameStore, InMemoryGameStore>();
 builder.Services.AddScoped<GameService>();
 builder.Services.AddScoped<AiTurnService>();
+builder.Services.AddScoped<GameNotifier>();
+builder.Services.AddSingleton<PresenceService>();
+builder.Services.AddHostedService<TurnTimeoutService>();
+
+// ── SignalR (E-04) ──
+builder.Services.AddSignalR();
 
 // ── JSON ──
 builder.Services.ConfigureHttpJsonOptions(o =>
@@ -81,6 +89,9 @@ GameEndpoints.Map(app);
 FleetEndpoints.Map(app);
 ShotEndpoints.Map(app);
 CatalogEndpoints.Map(app);
+
+// ── Hub temps réel (E-04) ──
+app.MapHub<GameHub>(GameHubMethods.Path).RequireCors("app");
 
 app.Run();
 
