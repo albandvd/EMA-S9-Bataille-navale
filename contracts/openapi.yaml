@@ -623,7 +623,10 @@ components:
         powers:
           type: array
           maxItems: 3
-          description: Exactement 3 pouvoirs, ou un tableau vide pour désactiver la mécanique.
+          description: >-
+            Exactement 3 pouvoirs pour un loadout personnalisé ; une liste vide équipe Sonar
+            par défaut sur les deux joueurs (temporaire, en attendant la sélection de loadout
+            complète, E-13).
           items: { $ref: '#/components/schemas/PowerId' }
         turnTimeoutSeconds:
           type: integer
