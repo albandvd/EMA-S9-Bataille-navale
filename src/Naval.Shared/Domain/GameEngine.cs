@@ -1,4 +1,5 @@
 using Naval.Shared.Contracts;
+using Naval.Shared.Domain.Powers;
 
 namespace Naval.Shared.Domain;
 
@@ -147,6 +148,73 @@ public static class GameEngine
 
         shooter.Energy += 2;
         return (new ShotResult(ShotOutcome.Hit, null, 2), null);
+    }
+
+    /// <summary>
+    /// Active un pouvoir. Vérifie équipement, statut du slot et énergie ; délègue la
+    /// validation spécifique et l'effet au handler. Ne vérifie PAS le tour du joueur ni le
+    /// statut de la partie : c'est la responsabilité de l'appelant (GameService), comme pour
+    /// ExecuteShot.
+    /// </summary>
+    public static (PowerActivationResult? result, string? errorCode) ActivatePower(
+        PlayerState caster, PlayerState target, PowerId powerId,
+        PowerTargetDto powerTarget, PowerRegistry registry)
+    {
+        if (!caster.EquippedPowers.Contains(powerId))
+            return (null, ErrorCodes.PowerNotEquipped);
+
+        var slot = caster.PowerSlots.First(s => s.PowerId == powerId);
+        var definition = PowerCatalog.All.First(d => d.Id == powerId);
+
+        if (slot.Status is PowerSlotStatus.Charging or PowerSlotStatus.Armed)
+            return (null, ErrorCodes.PowerAlreadyCharging);
+
+        if (slot.Status == PowerSlotStatus.OnCooldown)
+            return (null, ErrorCodes.PowerOnCooldown);
+
+        if (slot.Status == PowerSlotStatus.Exhausted)
+            return (null, ErrorCodes.PowerExhausted);
+
+        if (caster.Energy < definition.EnergyCost)
+            return (null, ErrorCodes.InsufficientEnergy);
+
+        var handler = registry.Find(powerId)
+            ?? throw new InvalidOperationException($"Aucun handler enregistré pour {powerId}.");
+
+        if (handler.Validate(caster, target, powerTarget) is not null)
+            return (null, ErrorCodes.InvalidTarget);
+
+        caster.Energy -= definition.EnergyCost;
+        var effect = handler.Execute(caster, target, powerTarget);
+
+        slot.CooldownRemaining = definition.Cooldown;
+        slot.Status = definition.Cooldown > 0 ? PowerSlotStatus.OnCooldown : PowerSlotStatus.Ready;
+
+        if (definition.MaxUses >= 0)
+        {
+            slot.UsesLeft--;
+            if (slot.UsesLeft <= 0) slot.Status = PowerSlotStatus.Exhausted;
+        }
+
+        return (new PowerActivationResult(powerId, definition.EnergyCost, caster.Energy,
+            slot.CooldownRemaining, effect), null);
+    }
+
+    /// <summary>Décrémente les cooldowns en cours d'un joueur d'un tour. Appelé quand ce joueur
+    /// redevient actif (E-14).</summary>
+    public static void TickPowerCooldowns(PlayerState player)
+    {
+        foreach (var slot in player.PowerSlots)
+        {
+            if (slot.Status != PowerSlotStatus.OnCooldown) continue;
+
+            slot.CooldownRemaining--;
+            if (slot.CooldownRemaining <= 0)
+            {
+                slot.CooldownRemaining = 0;
+                slot.Status = PowerSlotStatus.Ready;
+            }
+        }
     }
 
     public static bool IsGameOver(Game game) =>
