@@ -3,6 +3,8 @@ namespace Naval.Tests.Api;
 using FluentAssertions;
 using Naval.Api.Services;
 using Naval.Shared.Contracts;
+using Naval.Shared.Domain;
+using Naval.Shared.Domain.Powers;
 using Xunit;
 
 public class GameServiceTests
@@ -10,7 +12,7 @@ public class GameServiceTests
     [Fact]
     public async Task CreateGameAsync_marks_the_ai_opponent_ready_in_single_player()
     {
-        var service = new GameService(new InMemoryGameStore());
+        var service = new GameService(new InMemoryGameStore(), new PowerRegistry([new SonarHandler()]));
         var request = new CreateGameRequest("Joueur", GameMode.SinglePlayer, 10, 10, "Classic",
             AiLevel.Random, [], 0, null);
 
@@ -22,7 +24,7 @@ public class GameServiceTests
     [Fact]
     public async Task PlaceFleetAsync_starts_the_battle_once_the_human_player_is_ready_in_single_player()
     {
-        var service = new GameService(new InMemoryGameStore());
+        var service = new GameService(new InMemoryGameStore(), new PowerRegistry([new SonarHandler()]));
         var createRequest = new CreateGameRequest("Joueur", GameMode.SinglePlayer, 10, 10, "Classic",
             AiLevel.Random, [], 0, null);
         var (createdGame, token) = await service.CreateGameAsync(createRequest, CancellationToken.None);
@@ -32,5 +34,45 @@ public class GameServiceTests
             new PlaceFleetRequest(placements), CancellationToken.None);
 
         game.Status.Should().Be(GameStatus.InProgress);
+    }
+
+    [Fact]
+    public async Task UsePowerAsync_activates_sonar_and_deducts_its_energy_cost()
+    {
+        var service = new GameService(new InMemoryGameStore(), new PowerRegistry([new SonarHandler()]));
+        var createRequest = new CreateGameRequest("Joueur", GameMode.SinglePlayer, 10, 10, "Classic",
+            AiLevel.Random, [PowerId.Sonar], 0, 42);
+        var (createdGame, token) = await service.CreateGameAsync(createRequest, CancellationToken.None);
+
+        var placements = await service.SuggestRandomFleetAsync(createdGame.Id.Value, token, 42, CancellationToken.None);
+        await service.PlaceFleetAsync(createdGame.Id.Value, token, new PlaceFleetRequest(placements), CancellationToken.None);
+        createdGame.Player1.Energy = 5; // au-delà du minimum accordé au début de la bataille
+
+        var target = new PowerTargetDto(new CoordinateDto(5, 5), null, null, null, null);
+        var (result, game) = await service.UsePowerAsync(createdGame.Id.Value, token,
+            new UsePowerRequest(PowerId.Sonar, target), CancellationToken.None);
+
+        result.PowerId.Should().Be(PowerId.Sonar);
+        result.EnergySpent.Should().Be(3);
+        result.EnergyRemaining.Should().Be(2);
+        game.Player1.PowerSlots.Single(s => s.PowerId == PowerId.Sonar).Status
+            .Should().Be(PowerSlotStatus.OnCooldown);
+    }
+
+    [Fact]
+    public async Task UsePowerAsync_rejects_a_power_that_is_not_equipped()
+    {
+        var service = new GameService(new InMemoryGameStore(), new PowerRegistry([new SonarHandler()]));
+        var createRequest = new CreateGameRequest("Joueur", GameMode.SinglePlayer, 10, 10, "Classic",
+            AiLevel.Random, [], 0, 42); // Powers vide → équipe Sonar par défaut, pas TripleSalvo
+        var (createdGame, token) = await service.CreateGameAsync(createRequest, CancellationToken.None);
+        var placements = await service.SuggestRandomFleetAsync(createdGame.Id.Value, token, 42, CancellationToken.None);
+        await service.PlaceFleetAsync(createdGame.Id.Value, token, new PlaceFleetRequest(placements), CancellationToken.None);
+
+        var target = new PowerTargetDto(new CoordinateDto(5, 5), null, null, null, null);
+        var act = () => service.UsePowerAsync(createdGame.Id.Value, token,
+            new UsePowerRequest(PowerId.TripleSalvo, target), CancellationToken.None);
+
+        (await act.Should().ThrowAsync<GameException>()).Which.Code.Should().Be(ErrorCodes.PowerNotEquipped);
     }
 }
