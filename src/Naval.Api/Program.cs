@@ -53,7 +53,7 @@ app.UseExceptionHandler(errApp => errApp.Run(async ctx =>
                 404 => "Non trouvé",
                 403 => "Interdit",
                 409 => "Conflit",
-                _   => "Requête invalide"
+                _ => "Requête invalide"
             },
             gex.Message,
             gex.Code);

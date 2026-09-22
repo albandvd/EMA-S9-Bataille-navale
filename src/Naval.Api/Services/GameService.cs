@@ -152,7 +152,7 @@ public sealed class GameService
             {
                 var code = errors[0].Kind switch
                 {
-                    PlacementErrorKind.OutOfBounds     => ErrorCodes.OutOfBounds,
+                    PlacementErrorKind.OutOfBounds => ErrorCodes.OutOfBounds,
                     PlacementErrorKind.OverlappingShips => ErrorCodes.OverlappingShips,
                     _ => ErrorCodes.FleetIncomplete
                 };
@@ -483,19 +483,19 @@ public sealed class GameService
 
     private static string GetShotErrorMessage(string code) => code switch
     {
-        ErrorCodes.OutOfBounds         => "La coordonnée est hors de la grille.",
+        ErrorCodes.OutOfBounds => "La coordonnée est hors de la grille.",
         ErrorCodes.CellAlreadyTargeted => "Vous avez déjà tiré sur cette case.",
         _ => "Tir invalide."
     };
 
     private static string GetPowerErrorMessage(string code) => code switch
     {
-        ErrorCodes.PowerNotEquipped     => "Ce pouvoir n'est pas équipé.",
+        ErrorCodes.PowerNotEquipped => "Ce pouvoir n'est pas équipé.",
         ErrorCodes.PowerAlreadyCharging => "Ce pouvoir est déjà en cours de charge.",
-        ErrorCodes.PowerOnCooldown      => "Ce pouvoir est en recharge.",
-        ErrorCodes.PowerExhausted       => "Ce pouvoir n'a plus de charges disponibles.",
-        ErrorCodes.InsufficientEnergy   => "Énergie insuffisante.",
-        ErrorCodes.InvalidTarget        => "Cible invalide pour ce pouvoir.",
+        ErrorCodes.PowerOnCooldown => "Ce pouvoir est en recharge.",
+        ErrorCodes.PowerExhausted => "Ce pouvoir n'a plus de charges disponibles.",
+        ErrorCodes.InsufficientEnergy => "Énergie insuffisante.",
+        ErrorCodes.InvalidTarget => "Cible invalide pour ce pouvoir.",
         _ => "Activation de pouvoir refusée."
     };
 
@@ -509,7 +509,7 @@ public sealed class GameService
         return outcome switch
         {
             ShotOutcome.Miss => $"{shooterName} tire en {col}{row} — à l'eau.",
-            ShotOutcome.Hit  => $"{shooterName} tire en {col}{row} — touché !",
+            ShotOutcome.Hit => $"{shooterName} tire en {col}{row} — touché !",
             ShotOutcome.Sunk => $"{shooterName} tire en {col}{row} — coulé !",
             _ => $"{shooterName} tire en {col}{row}."
         };

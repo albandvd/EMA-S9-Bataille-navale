@@ -123,13 +123,13 @@ public static class GameMapper
     {
         var type = evt switch
         {
-            ShotFiredEvent     => "ShotFired",
-            TurnChangedEvent   => "TurnChanged",
-            GameOverEvent      => "GameOver",
-            PlayerReadyEvent   => "PlayerJoined",
+            ShotFiredEvent => "ShotFired",
+            TurnChangedEvent => "TurnChanged",
+            GameOverEvent => "GameOver",
+            PlayerReadyEvent => "PlayerJoined",
             PowerActivatedEvent => "PowerActivated",
-            PowerResolvedEvent  => "PowerResolved",
-            EnergyChangedEvent  => "EnergyChanged",
+            PowerResolvedEvent => "PowerResolved",
+            EnergyChangedEvent => "EnergyChanged",
             _ => "Unknown"
         };
 

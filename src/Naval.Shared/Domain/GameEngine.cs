@@ -68,7 +68,7 @@ public static class GameEngine
             }
 
             ships.Add(ship);
-            nextShip:;
+        nextShip:;
         }
 
         if (errors.Count > 0) return (null, errors);

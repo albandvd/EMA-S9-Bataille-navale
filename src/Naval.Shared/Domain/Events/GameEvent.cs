@@ -3,10 +3,10 @@ using Naval.Shared.Contracts;
 namespace Naval.Shared.Domain.Events;
 
 public abstract record GameEvent(
-    int            Sequence,
+    int Sequence,
     DateTimeOffset AtUtc,
-    PlayerId?      ActorId,
-    string         Message);
+    PlayerId? ActorId,
+    string Message);
 
 public sealed record ShotFiredEvent(
     int Sequence, DateTimeOffset AtUtc, PlayerId ShooterId,
