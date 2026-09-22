@@ -729,3 +729,47 @@ accueil, déploiement et bataille ; `scrollWidth` du document égal à la largeu
 
 **Résultat observé :** La console et ses deux écrans ont la même taille sur toutes les pages ;
 seul le contenu change. `dotnet build` → 0 avertissement, `dotnet test` → 47/47.
+
+---
+
+## E-31 — CI GitHub Actions
+
+**Prompt :** « mets toi sur une branche ci qui part de main et occupe toi de faire la ci »
+(précédé d'un état des lieux du projet par rapport aux consignes, qui a identifié E-31 comme
+absent : `.github/` n'existait pas alors que `03-architecture.md` documente déjà le workflow
+attendu).
+
+**Décision et justification :**
+
+1. **`Naval.slnx` explicite dans les commandes, pas d'auto-détection.** Le dépôt utilise le
+   nouveau format de solution `.slnx` (pas de `.sln`). `dotnet build`/`test` sans argument
+   fonctionnent en local parce qu'il n'y a qu'un seul fichier de solution dans le répertoire,
+   mais un CI qui dépend d'une auto-détection implicite casse silencieusement au premier fichier
+   ambigu ajouté à la racine. Les trois étapes (`restore`, `build`, `test`) ciblent donc
+   explicitement `Naval.slnx`.
+2. **Version du SDK lue depuis `global.json` (`global-json-file`) plutôt que dupliquée dans le
+   workflow.** `03-architecture.md` propose `dotnet-version: '10.0.x'` en dur dans le YAML ; ça
+   crée une deuxième source de vérité qui peut diverger du `global.json` que les deux postes du
+   binôme utilisent déjà. `actions/setup-dotnet@v4` sait lire `global.json` directement — un seul
+   endroit à mettre à jour si la version du SDK change.
+3. **Pas de flag `-warnaserror` redondant.** `Directory.Build.props` a déjà
+   `TreatWarningsAsErrors=true` pour tous les projets ; l'ajouter aussi en CLI n'aurait changé
+   rien de plus, mais aurait suggéré à tort que l'échec sur warning est une politique de CI et
+   non une propriété du build lui-même — donc omis pour ne pas dupliquer la source de vérité.
+4. **Build et test en configuration `Release`.** Les warnings et le comportement de certaines
+   API (`Nullable`, optimisations JIT) peuvent différer de `Debug` ; c'est la configuration qui
+   sera réellement publiée (voir `docker-compose.yml`, `ASPNETCORE_ENVIRONMENT: Production`), donc
+   c'est elle qui doit être vérifiée en CI.
+5. **Résultats de tests publiés en artefact `.trx`**, comme documenté, pour pouvoir inspecter un
+   échec sur GitHub sans reproduire en local.
+
+**Scénario de vérification :** Les trois commandes du workflow rejouées en local à l'identique :
+`dotnet restore Naval.slnx`, `dotnet build Naval.slnx --no-restore --configuration Release`,
+`dotnet test Naval.slnx --no-build --configuration Release --logger "trx;LogFileName=results.trx"`.
+
+**Résultat observé :** Build Release → 0 avertissement, 0 erreur. Tests → 47/47,
+`results.trx` généré dans `tests/Naval.Tests/TestResults/`. Le workflow n'a pas pu être exécuté
+sur GitHub Actions depuis cette session (pas d'accès réseau à l'exécuteur) ; à confirmer par un
+push/PR réel.
+
+**Statut :** `terminé` (sous réserve de la première exécution réelle sur GitHub Actions)

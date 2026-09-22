@@ -48,3 +48,7 @@ logs/
 ## Worktrees (scratch, native tooling)
 .worktrees/
 .claude/worktrees/
+
+# Captures de debug (Playwright MCP et captures manuelles à la racine)
+.playwright-mcp/
+battle-progress*.png

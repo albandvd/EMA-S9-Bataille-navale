@@ -1,0 +1,31 @@
+name: ci
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Naval.slnx
+
+      - name: Build (warnings as errors)
+        run: dotnet build Naval.slnx --no-restore --configuration Release
+
+      - name: Test
+        run: >
+          dotnet test Naval.slnx --no-build --configuration Release
+          --logger "trx;LogFileName=results.trx"
+
+      - name: Publier les résultats de tests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: '**/results.trx'
