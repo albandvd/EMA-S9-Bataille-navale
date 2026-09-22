@@ -861,3 +861,78 @@ aucun changement sémantique) — commité séparément (`style: dotnet format �
 paramètres de record`).
 
 **Statut :** `terminé`
+
+---
+
+## Revue finale de branche — 5 findings sur le pouvoir Sonar
+
+**Prompt :** Revue finale « whole-branch » de `feat/E-10-16-power-sonar` (8 tâches déjà
+committées et individuellement relues clean) ayant fait remonter 5 findings « Important »
+transversaux, invisibles tâche par tâche : divergence 409/400 avec `contracts/openapi.yaml`,
+`Target` nullable non gardé côté `UsePowerAsync`, `PowersEnabled` contredisant le loadout par
+défaut, `JoinGameRequest.Powers` silencieusement ignoré, commentaire obsolète dans
+`Battle.razor`. Consigne : corriger exactement ces 5 points en une seule passe, rien d'autre.
+
+**Décision et justification :**
+
+1. **`INSUFFICIENT_ENERGY` classé en conflit (409), pas en requête invalide (400).**
+   `contracts/openapi.yaml` est la source de vérité du contrat HTTP (règle explicite de
+   `CLAUDE.md`) et documente déjà cet exemple en 409. `IsPowerConflictCode` ne listait que
+   `PowerAlreadyCharging`/`PowerOnCooldown`/`PowerExhausted` : ajout de
+   `ErrorCodes.InsufficientEnergy` à cette liste. `PowerNotEquipped` et `InvalidTarget` restent
+   en 400 — ce sont des erreurs de requête (pouvoir non équipé, cible malformée), pas des
+   conflits d'état de partie, distinction que le YAML respecte aussi.
+2. **Garde explicite sur `Target` null plutôt que dépendre de la validation FluentValidation en
+   amont.** `UsePowerRequest.Target` est déclaré non-nullable côté C#, mais `System.Text.Json`
+   accepte silencieusement un corps sans `target` ou `"target": null` — rien ne l'empêchait
+   d'atteindre `SonarHandler.Validate`, qui déréférence `Cell` sans garde et lève une
+   `NullReferenceException` non catchée par le pipeline `GameException` → `ProblemDetails`.
+   Plutôt que de modifier `SonarHandler` (chaque futur handler répéterait la même faille) ou
+   d'ajouter une règle FluentValidation séparée du reste de la logique d'erreurs pouvoir, un
+   garde-fou est posé au même endroit que les autres vérifications de `UsePowerAsync` (tour,
+   statut de partie) : `throw new GameException(ErrorCodes.InvalidTarget, …)` sans
+   `isConflict`, donc 400 — c'est une requête malformée, pas un état de jeu en conflit.
+3. **`PowersEnabled` recalculé à partir d'`equippedPowers`, pas de `req.Powers` brut.** Depuis la
+   tâche précédente, une liste `Powers` vide déclenche déjà un loadout par défaut `[Sonar]` pour
+   les deux joueurs (`equippedPowers`), mais `Game.PowersEnabled` (exposé en lobby via
+   `GameSummary`/`OpenGameDto`) restait calculé sur `req.Powers.Count > 0` — un vestige d'avant
+   cette décision, qui annonçait « pouvoirs désactivés » alors que Sonar était activement
+   équipé et jouable. Corrigé pour réutiliser la variable déjà calculée
+   (`equippedPowers.Count > 0`) : en pratique toujours vrai aujourd'hui (le fallback garantit au
+   moins Sonar), ce qui est l'état honnête du système tant qu'E-13 n'introduit pas de vraie
+   désactivation volontaire des pouvoirs. Doc XML de `CreateGameRequest.Powers` mise à jour en
+   conséquence (ne prétend plus qu'une liste vide « désactive la mécanique »).
+4. **Pas de transfert du loadout du joueur qui rejoint (`JoinGameRequest.Powers`) — juste un
+   commentaire explicite du manque.** `PlayerState.EquippedPowers` est get-only, fixé une seule
+   fois à la construction ; le rendre modifiable après coup pour un flux qui n'a aujourd'hui
+   aucun chemin d'exécution possible (pas de mode en ligne réel encore branché) aurait été de la
+   sur-ingénierie hors du périmètre de cette revue. Le gap est documenté en commentaire au point
+   exact où `req.Powers` est disponible mais non utilisé, pour qu'un futur lecteur — ou l'auteur
+   d'E-13 — voie explicitement ce qui est fixé et ce qui ne l'est délibérément pas encore.
+5. **Commentaire de `Battle.razor::HandlePower` corrigé en TODO honnête plutôt que supprimé.**
+   Le commentaire prétendait qu'un pouvoir `TargetKind.None` serait « activé immédiatement »,
+   alors que le corps de la méthode ne fait que `_pendingPower = id;` pour tous les pouvoirs,
+   sans branche. Un futur pouvoir sans cible (ex. `RadioIntercept`, déjà au catalogue) resterait
+   donc bloqué en attente d'un clic qu'il n'utilise pas. Plutôt que d'implémenter la logique
+   manquante (hors scope, pas de pouvoir `TargetKind.None` existant à ce jour pour la tester),
+   le commentaire est corrigé pour décrire fidèlement le comportement actuel et signaler le gap
+   comme TODO explicite.
+
+**Scénario de vérification :**
+- 3 tests ajoutés dans `tests/Naval.Tests/Api/GameServiceTests.cs` :
+  `UsePowerAsync_rejects_insufficient_energy_as_a_conflict` (vérifie `Code ==
+  InsufficientEnergy` et `IsConflict == true`), `UsePowerAsync_rejects_a_missing_target_as_invalid_target`
+  (`Target: null!`, vérifie `Code == InvalidTarget` et `IsConflict == false`),
+  `CreateGameAsync_reports_powers_enabled_even_when_powers_defaults_to_sonar` (`Powers: []`,
+  vérifie `game.PowersEnabled == true`).
+- `dotnet build` : 0 avertissement, 0 erreur.
+- `dotnet test` : suite complète.
+- Relecture de `contracts/openapi.yaml` (recherche « INSUFFICIENT_ENERGY ») pour confirmer
+  l'alignement du code sur le statut 409 documenté avant de modifier `IsPowerConflictCode`.
+- `git status --short` après les modifications : seuls les 4 fichiers autorisés par la tâche
+  (`GameService.cs`, `Requests.cs`, `Battle.razor`, `GameServiceTests.cs`) apparaissent modifiés.
+
+**Résultat observé :** `dotnet build` → 0 avertissement. `dotnet test` → 61/61 verts (58
+préexistants + 3 nouveaux). Aucun fichier hors du périmètre autorisé n'a été touché.
+
+**Statut :** `terminé`
