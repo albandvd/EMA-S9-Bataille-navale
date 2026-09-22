@@ -27,6 +27,12 @@
                     <div class="battle-panel__side">
                         <EnergyGauge Energy="current.Self.Energy" />
                         <ChargeMeter Charge="current.Opponent.Charge" />
+                        @if (_pendingPower is { } pending)
+                        {
+                            <p class="power-bar__targeting" role="status">
+                                Ciblez une case sur la grille adverse pour @pending.
+                            </p>
+                        }
                         <PowerBar Powers="current.Self.Powers" OnPowerActivated="HandlePower" />
                         <EventLog Events="current.RecentEvents" />
                     </div>
@@ -46,8 +52,16 @@
         }
     }
 
+    private PowerId? _pendingPower;
+
     private async Task HandleFire(CoordinateDto target)
     {
+        if (_pendingPower is { } powerId)
+        {
+            await ActivatePowerOn(powerId, target);
+            return;
+        }
+
         var before = Store.CurrentGame;
         Audio.Play("fire");
         await Store.FireAsync(target);
@@ -57,6 +71,13 @@
         {
             Navigation.NavigateTo("/result");
         }
+    }
+
+    private async Task ActivatePowerOn(PowerId powerId, CoordinateDto target)
+    {
+        _pendingPower = null;
+        Audio.Play("sonar-ping");
+        await Store.UsePowerAsync(powerId, new PowerTargetDto(target, null, null, null, null));
     }
 
     /// <summary>
@@ -93,10 +114,13 @@
     private static int CountHits(BoardViewDto board) =>
         board.Rows.Sum(row => row.Count(c => c is 'x' or '#'));
 
-    private async Task HandlePower(PowerId id)
+    private void HandlePower(PowerId id)
     {
-        Audio.Play("sonar-ping");
-        await Store.UsePowerAsync(id, new PowerTargetDto(null, null, null, null, null));
+        // TargetKind.None (aucun pouvoir équipé pour l'instant n'utilise ce cas, mais le
+        // pipeline générique doit rester correct) : on l'active immédiatement.
+        // Tout pouvoir dont le TargetKind exige une case (Sonar : Area) attend le prochain
+        // clic sur la grille adverse.
+        _pendingPower = id;
     }
 
     /// <summary>
