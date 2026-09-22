@@ -773,3 +773,91 @@ sur GitHub Actions depuis cette session (pas d'accès réseau à l'exécuteur) ;
 push/PR réel.
 
 **Statut :** `terminé` (sous réserve de la première exécution réelle sur GitHub Actions)
+
+---
+
+## Premier pouvoir de bout en bout — Sonar (P-01)
+
+**Prompt :** Enchaînement de 7 tâches issues de
+`docs/superpowers/plans/2026-09-22-power-sonar-plan.md` (spec approuvée dans
+`docs/superpowers/specs/2026-09-22-power-sonar-design.md`) : primitives `IPowerHandler`/
+`PowerRegistry`/`PowerSlot`, loadout sur `PlayerState`, `SonarHandler` +
+`GameEngine.ActivatePower`/`TickPowerCooldowns`, événements + `GameMapper`,
+`GameService.UsePowerAsync` + énergie/cooldown par tour, endpoint REST, câblage front
+(`Battle.razor`). Objectif : faire fonctionner un pouvoir complet, du clic à la grille jusqu'à
+la réponse serveur, pour valider le pipeline générique avant les 22 autres pouvoirs du
+catalogue.
+
+**Décision et justification :**
+
+1. **Distance euclidienne, pas Chebyshev, pour le disque de Sonar.** `docs/02-pouvoirs.md`
+   décrit la zone de Sonar comme un « disque de rayon 4 » : `SonarHandler.Execute` compte donc
+   les cases occupées adverses dont `dx² + dy² ≤ 16` (rayon au carré), plutôt qu'un simple
+   `max(|dx|, |dy|) ≤ 4` (Chebyshev, qui donnerait un carré, pas un disque). La différence n'est
+   pas cosmétique : aux quatre coins de la zone (`|dx| = |dy| = 4`), Chebyshev inclurait des
+   cases à distance réelle 4√2 ≈ 5,7, hors de portée du sonar tel que décrit. Documenté en
+   commentaire XML sur `SonarHandler` (et repris dans le plan lui-même) pour que le prochain
+   pouvoir de zone à venir — la Frappe orbitale, qui est un carré 5×5 et doit donc rester en
+   Chebyshev ou en bornes explicites — ne récupère pas `DistanceSquared` par erreur. Les deux
+   métriques coexisteront dans le catalogue ; le nom de la méthode (`DistanceSquared`, privée à
+   `SonarHandler`) évite qu'un futur handler la réutilise par simple copier-coller.
+2. **`GrantTurnStartBenefits` accorde l'énergie ET décrémente les cooldowns au même instant :
+   quand le joueur redevient actif.** E-10 (+1 énergie/tour) n'existait pas avant cette tâche ;
+   E-14 (cooldowns) est nouveau aussi. Les regrouper dans une seule méthode privée de
+   `GameService`, appelée depuis `StartBattle` (tour 1) et `AdvanceTurn` (tours suivants), évite
+   deux pièges : (a) un ordre implicite entre deux appels séparés qu'un futur refactor pourrait
+   inverser sans test qui casse immédiatement ; (b) un décalage d'un tour si l'un des deux était
+   accroché à un autre point du cycle (ex. fin du tour du tireur précédent plutôt que début du
+   tour du joueur qui redevient actif) — un cooldown pris à `AdvanceTurn` au lieu de son propre
+   `GrantTurnStartBenefits` retarderait la disponibilité d'un pouvoir d'un tour complet pour le
+   joueur qui vient de jouer. Le choix explicite est : les bénéfices de tour sont une notion
+   unique, appliquée au joueur qui *devient* actif, jamais à celui qui vient de jouer. Un
+   `EnergyChangedEvent` est émis à cette occasion, cohérent avec les événements déjà existants
+   pour les gains d'énergie sur touche/coulé (`GameEngine.ExecuteShot`).
+3. **Sonar équipé par défaut si `CreateGameRequest.Powers` est vide, plutôt que de bloquer la
+   création de partie.** Le front (`Lobby.razor`, `PowerBar.razor`) est déjà câblé pour un
+   loadout mais la sélection UI (E-13) n'est pas encore implémentée — `req.Powers` arrive donc
+   vide dans la plupart des parties créées aujourd'hui. Deux autres options écartées : refuser la
+   création (`400`) tant qu'aucun pouvoir n'est choisi — bloquerait toute partie solo existante
+   pour une fonctionnalité UI hors scope de cette tâche — ou équiper silencieusement une liste
+   vide — rendrait le pipeline de pouvoirs invisible et intestable de bout en bout tant que E-13
+   n'est pas fait. Équiper `[PowerId.Sonar]` par défaut (les deux joueurs, IA comprise) garde la
+   partie solo jouable immédiatement et sert de filet pour vérifier le pipeline en conditions
+   réelles ; le code du choix (`req.Powers.Count > 0 ? req.Powers : [PowerId.Sonar]`) est une
+   ligne à retirer quand E-13 fournira un vrai loadout choisi par le joueur.
+
+Point mineur, non structurant : `IPowerHandler.Validate`/`Execute` prennent `PowerTargetDto`
+(un DTO de `Contracts`) directement en paramètre plutôt qu'un type Domain intermédiaire — accepté
+en cours d'implémentation car `GameEngine.ValidateAndBuildFleet`/`GenerateRandomPlacement`
+suivent déjà ce même patron pour les requêtes de placement ; ce n'est pas une nouvelle dérogation
+à la règle Domain/Contracts, juste la continuation d'un précédent déjà en place.
+
+**Scénario de vérification :**
+- 3 tests dédiés à `SonarHandler`/`GameEngine.ActivatePower` (nominal : 3 cases détectées, coût
+  et cooldown corrects, `RevealedCells` vide ; refus : énergie insuffisante, état inchangé ;
+  bord de grille : cible en coin `(0,0)`, cases hors bornes silencieusement exclues du comptage,
+  pas d'exception).
+- `GameMapperTests` : vue self expose le vrai statut/coût du slot (`CanAffordNow`), vue adverse
+  n'expose que la liste des `PowerId` équipés, jamais leur statut.
+- `GameServiceTests` : activation de bout en bout via `UsePowerAsync` (création → placement →
+  activation Sonar), et refus `PowerNotEquipped` sur un pouvoir non équipé.
+- Vérification manuelle de l'endpoint réel : `dotnet run --project src/Naval.Api`, séquence
+  `POST /api/games` (Powers=["Sonar"]) → déploiement → `POST /api/games/{id}/powers` avec
+  `{"powerId":"Sonar","target":{"cell":{"x":5,"y":5}}}` → `200` avec `revealedCount` renseigné,
+  `revealedCells` vide.
+- Vérification manuelle front : partie solo jusqu'à `Battle.razor`, clic sur le bouton Sonar
+  (message « Ciblez une case… » affiché), clic sur une case de la grille adverse → énergie
+  décrémentée de 3, slot en `OnCooldown`, entrée « Sonar : N case(s) détectée(s)… » dans
+  `EventLog`.
+- Suite complète : `dotnet build && dotnet test`, puis `dotnet format && dotnet build &&
+  dotnet test` pour confirmer l'absence de régression après mise en forme.
+
+**Résultat observé :** `dotnet build` → 0 avertissement sur les deux passes. `dotnet test` →
+58/58 (47 préexistants + 2 `PowerRegistryTests` + 2 `PlayerStateTests` + 3 `SonarTests` + 2
+`GameMapperTests` + 2 `GameServiceTests`), avant et après `dotnet format`. `dotnet format` n'a
+touché aucun fichier créé par cette fonctionnalité ; il a en revanche réaligné des paramètres de
+`record` multi-lignes dans onze fichiers préexistants (espaces d'alignement colonne supprimés,
+aucun changement sémantique) — commité séparément (`style: dotnet format — alignement des
+paramètres de record`).
+
+**Statut :** `terminé`
