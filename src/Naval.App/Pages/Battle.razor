@@ -116,10 +116,11 @@
 
     private void HandlePower(PowerId id)
     {
-        // TargetKind.None (aucun pouvoir équipé pour l'instant n'utilise ce cas, mais le
-        // pipeline générique doit rester correct) : on l'active immédiatement.
-        // Tout pouvoir dont le TargetKind exige une case (Sonar : Area) attend le prochain
-        // clic sur la grille adverse.
+        // TODO(E-16, futur pouvoir TargetKind.None) : cette méthode arme systématiquement
+        // _pendingPower et attend un clic sur la grille adverse. C'est correct pour Sonar
+        // (TargetKind.Area), mais un futur pouvoir sans cible (TargetKind.None, ex.
+        // RadioIntercept) resterait bloqué en attente d'un clic qu'il n'utilise pas — à
+        // traiter quand un tel pouvoir sera implémenté.
         _pendingPower = id;
     }
 

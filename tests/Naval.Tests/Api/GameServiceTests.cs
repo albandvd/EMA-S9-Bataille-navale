@@ -22,6 +22,18 @@ public class GameServiceTests
     }
 
     [Fact]
+    public async Task CreateGameAsync_reports_powers_enabled_even_when_powers_defaults_to_sonar()
+    {
+        var service = new GameService(new InMemoryGameStore(), new PowerRegistry([new SonarHandler()]));
+        var request = new CreateGameRequest("Joueur", GameMode.SinglePlayer, 10, 10, "Classic",
+            AiLevel.Random, [], 0, null); // Powers vide → loadout par défaut [Sonar]
+
+        var (game, _) = await service.CreateGameAsync(request, CancellationToken.None);
+
+        game.PowersEnabled.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task PlaceFleetAsync_starts_the_battle_once_the_human_player_is_ready_in_single_player()
     {
         var service = new GameService(new InMemoryGameStore(), new PowerRegistry([new SonarHandler()]));
@@ -74,5 +86,44 @@ public class GameServiceTests
             new UsePowerRequest(PowerId.TripleSalvo, target), CancellationToken.None);
 
         (await act.Should().ThrowAsync<GameException>()).Which.Code.Should().Be(ErrorCodes.PowerNotEquipped);
+    }
+
+    [Fact]
+    public async Task UsePowerAsync_rejects_insufficient_energy_as_a_conflict()
+    {
+        var service = new GameService(new InMemoryGameStore(), new PowerRegistry([new SonarHandler()]));
+        var createRequest = new CreateGameRequest("Joueur", GameMode.SinglePlayer, 10, 10, "Classic",
+            AiLevel.Random, [PowerId.Sonar], 0, 42);
+        var (createdGame, token) = await service.CreateGameAsync(createRequest, CancellationToken.None);
+        var placements = await service.SuggestRandomFleetAsync(createdGame.Id.Value, token, 42, CancellationToken.None);
+        await service.PlaceFleetAsync(createdGame.Id.Value, token, new PlaceFleetRequest(placements), CancellationToken.None);
+        createdGame.Player1.Energy = 0; // insuffisant pour le coût de Sonar
+
+        var target = new PowerTargetDto(new CoordinateDto(5, 5), null, null, null, null);
+        var act = () => service.UsePowerAsync(createdGame.Id.Value, token,
+            new UsePowerRequest(PowerId.Sonar, target), CancellationToken.None);
+
+        var thrown = (await act.Should().ThrowAsync<GameException>()).Which;
+        thrown.Code.Should().Be(ErrorCodes.InsufficientEnergy);
+        thrown.IsConflict.Should().BeTrue(); // 409, conformément à contracts/openapi.yaml
+    }
+
+    [Fact]
+    public async Task UsePowerAsync_rejects_a_missing_target_as_invalid_target()
+    {
+        var service = new GameService(new InMemoryGameStore(), new PowerRegistry([new SonarHandler()]));
+        var createRequest = new CreateGameRequest("Joueur", GameMode.SinglePlayer, 10, 10, "Classic",
+            AiLevel.Random, [PowerId.Sonar], 0, 42);
+        var (createdGame, token) = await service.CreateGameAsync(createRequest, CancellationToken.None);
+        var placements = await service.SuggestRandomFleetAsync(createdGame.Id.Value, token, 42, CancellationToken.None);
+        await service.PlaceFleetAsync(createdGame.Id.Value, token, new PlaceFleetRequest(placements), CancellationToken.None);
+        createdGame.Player1.Energy = 5;
+
+        var act = () => service.UsePowerAsync(createdGame.Id.Value, token,
+            new UsePowerRequest(PowerId.Sonar, null!), CancellationToken.None);
+
+        var thrown = (await act.Should().ThrowAsync<GameException>()).Which;
+        thrown.Code.Should().Be(ErrorCodes.InvalidTarget);
+        thrown.IsConflict.Should().BeFalse(); // 400 : requête malformée, pas un conflit d'état
     }
 }

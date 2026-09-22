@@ -66,7 +66,7 @@ public sealed class GameService
         var game = new Game(
             gameId, req.Mode, joinCode, req.FleetPreset,
             req.GridWidth, req.GridHeight,
-            powersEnabled: req.Powers.Count > 0,
+            powersEnabled: equippedPowers.Count > 0,
             turnTimeoutSeconds: req.TurnTimeoutSeconds,
             p1, p2);
 
@@ -108,6 +108,11 @@ public sealed class GameService
             game.Player2.Name = req.PlayerName;
             game.Player2.Token = p2Token;
             game.Player2.IsConnected = true;
+
+            // Note : req.Powers (le loadout du joueur qui rejoint) n'est pas encore appliqué ici — le
+            // joueur 2 garde le loadout par défaut posé à la création (CreateGameAsync). Transférer le
+            // vrai loadout du joueur qui rejoint suppose de rendre PlayerState.EquippedPowers modifiable
+            // après construction ; à traiter avec E-13 (sélection de loadout complète).
 
             game.Status = GameStatus.AwaitingDeployment;
 
@@ -369,6 +374,9 @@ public sealed class GameService
                 throw new GameException(ErrorCodes.NotYourTurn, "Ce n'est pas votre tour.",
                     isConflict: true);
 
+            if (req.Target is null)
+                throw new GameException(ErrorCodes.InvalidTarget, "Cible du pouvoir manquante.");
+
             var target = game.GetOpponent(caster.Id);
 
             var (activation, errorCode) = GameEngine.ActivatePower(
@@ -500,7 +508,8 @@ public sealed class GameService
     };
 
     private static bool IsPowerConflictCode(string code) =>
-        code is ErrorCodes.PowerAlreadyCharging or ErrorCodes.PowerOnCooldown or ErrorCodes.PowerExhausted;
+        code is ErrorCodes.PowerAlreadyCharging or ErrorCodes.PowerOnCooldown or ErrorCodes.PowerExhausted
+            or ErrorCodes.InsufficientEnergy;
 
     private static string FormatShotMessage(string shooterName, Coordinate coord, ShotOutcome outcome)
     {
