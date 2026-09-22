@@ -773,3 +773,166 @@ sur GitHub Actions depuis cette session (pas d'accès réseau à l'exécuteur) ;
 push/PR réel.
 
 **Statut :** `terminé` (sous réserve de la première exécution réelle sur GitHub Actions)
+
+---
+
+## Premier pouvoir de bout en bout — Sonar (P-01)
+
+**Prompt :** Enchaînement de 7 tâches issues de
+`docs/superpowers/plans/2026-09-22-power-sonar-plan.md` (spec approuvée dans
+`docs/superpowers/specs/2026-09-22-power-sonar-design.md`) : primitives `IPowerHandler`/
+`PowerRegistry`/`PowerSlot`, loadout sur `PlayerState`, `SonarHandler` +
+`GameEngine.ActivatePower`/`TickPowerCooldowns`, événements + `GameMapper`,
+`GameService.UsePowerAsync` + énergie/cooldown par tour, endpoint REST, câblage front
+(`Battle.razor`). Objectif : faire fonctionner un pouvoir complet, du clic à la grille jusqu'à
+la réponse serveur, pour valider le pipeline générique avant les 22 autres pouvoirs du
+catalogue.
+
+**Décision et justification :**
+
+1. **Distance euclidienne, pas Chebyshev, pour le disque de Sonar.** `docs/02-pouvoirs.md`
+   décrit la zone de Sonar comme un « disque de rayon 4 » : `SonarHandler.Execute` compte donc
+   les cases occupées adverses dont `dx² + dy² ≤ 16` (rayon au carré), plutôt qu'un simple
+   `max(|dx|, |dy|) ≤ 4` (Chebyshev, qui donnerait un carré, pas un disque). La différence n'est
+   pas cosmétique : aux quatre coins de la zone (`|dx| = |dy| = 4`), Chebyshev inclurait des
+   cases à distance réelle 4√2 ≈ 5,7, hors de portée du sonar tel que décrit. Documenté en
+   commentaire XML sur `SonarHandler` (et repris dans le plan lui-même) pour que le prochain
+   pouvoir de zone à venir — la Frappe orbitale, qui est un carré 5×5 et doit donc rester en
+   Chebyshev ou en bornes explicites — ne récupère pas `DistanceSquared` par erreur. Les deux
+   métriques coexisteront dans le catalogue ; le nom de la méthode (`DistanceSquared`, privée à
+   `SonarHandler`) évite qu'un futur handler la réutilise par simple copier-coller.
+2. **`GrantTurnStartBenefits` accorde l'énergie ET décrémente les cooldowns au même instant :
+   quand le joueur redevient actif.** E-10 (+1 énergie/tour) n'existait pas avant cette tâche ;
+   E-14 (cooldowns) est nouveau aussi. Les regrouper dans une seule méthode privée de
+   `GameService`, appelée depuis `StartBattle` (tour 1) et `AdvanceTurn` (tours suivants), évite
+   deux pièges : (a) un ordre implicite entre deux appels séparés qu'un futur refactor pourrait
+   inverser sans test qui casse immédiatement ; (b) un décalage d'un tour si l'un des deux était
+   accroché à un autre point du cycle (ex. fin du tour du tireur précédent plutôt que début du
+   tour du joueur qui redevient actif) — un cooldown pris à `AdvanceTurn` au lieu de son propre
+   `GrantTurnStartBenefits` retarderait la disponibilité d'un pouvoir d'un tour complet pour le
+   joueur qui vient de jouer. Le choix explicite est : les bénéfices de tour sont une notion
+   unique, appliquée au joueur qui *devient* actif, jamais à celui qui vient de jouer. Un
+   `EnergyChangedEvent` est émis à cette occasion, cohérent avec les événements déjà existants
+   pour les gains d'énergie sur touche/coulé (`GameEngine.ExecuteShot`).
+3. **Sonar équipé par défaut si `CreateGameRequest.Powers` est vide, plutôt que de bloquer la
+   création de partie.** Le front (`Lobby.razor`, `PowerBar.razor`) est déjà câblé pour un
+   loadout mais la sélection UI (E-13) n'est pas encore implémentée — `req.Powers` arrive donc
+   vide dans la plupart des parties créées aujourd'hui. Deux autres options écartées : refuser la
+   création (`400`) tant qu'aucun pouvoir n'est choisi — bloquerait toute partie solo existante
+   pour une fonctionnalité UI hors scope de cette tâche — ou équiper silencieusement une liste
+   vide — rendrait le pipeline de pouvoirs invisible et intestable de bout en bout tant que E-13
+   n'est pas fait. Équiper `[PowerId.Sonar]` par défaut (les deux joueurs, IA comprise) garde la
+   partie solo jouable immédiatement et sert de filet pour vérifier le pipeline en conditions
+   réelles ; le code du choix (`req.Powers.Count > 0 ? req.Powers : [PowerId.Sonar]`) est une
+   ligne à retirer quand E-13 fournira un vrai loadout choisi par le joueur.
+
+Point mineur, non structurant : `IPowerHandler.Validate`/`Execute` prennent `PowerTargetDto`
+(un DTO de `Contracts`) directement en paramètre plutôt qu'un type Domain intermédiaire — accepté
+en cours d'implémentation car `GameEngine.ValidateAndBuildFleet`/`GenerateRandomPlacement`
+suivent déjà ce même patron pour les requêtes de placement ; ce n'est pas une nouvelle dérogation
+à la règle Domain/Contracts, juste la continuation d'un précédent déjà en place.
+
+**Scénario de vérification :**
+- 3 tests dédiés à `SonarHandler`/`GameEngine.ActivatePower` (nominal : 3 cases détectées, coût
+  et cooldown corrects, `RevealedCells` vide ; refus : énergie insuffisante, état inchangé ;
+  bord de grille : cible en coin `(0,0)`, cases hors bornes silencieusement exclues du comptage,
+  pas d'exception).
+- `GameMapperTests` : vue self expose le vrai statut/coût du slot (`CanAffordNow`), vue adverse
+  n'expose que la liste des `PowerId` équipés, jamais leur statut.
+- `GameServiceTests` : activation de bout en bout via `UsePowerAsync` (création → placement →
+  activation Sonar), et refus `PowerNotEquipped` sur un pouvoir non équipé.
+- Vérification manuelle de l'endpoint réel : `dotnet run --project src/Naval.Api`, séquence
+  `POST /api/games` (Powers=["Sonar"]) → déploiement → `POST /api/games/{id}/powers` avec
+  `{"powerId":"Sonar","target":{"cell":{"x":5,"y":5}}}` → `200` avec `revealedCount` renseigné,
+  `revealedCells` vide.
+- Vérification manuelle front : partie solo jusqu'à `Battle.razor`, clic sur le bouton Sonar
+  (message « Ciblez une case… » affiché), clic sur une case de la grille adverse → énergie
+  décrémentée de 3, slot en `OnCooldown`, entrée « Sonar : N case(s) détectée(s)… » dans
+  `EventLog`.
+- Suite complète : `dotnet build && dotnet test`, puis `dotnet format && dotnet build &&
+  dotnet test` pour confirmer l'absence de régression après mise en forme.
+
+**Résultat observé :** `dotnet build` → 0 avertissement sur les deux passes. `dotnet test` →
+58/58 (47 préexistants + 2 `PowerRegistryTests` + 2 `PlayerStateTests` + 3 `SonarTests` + 2
+`GameMapperTests` + 2 `GameServiceTests`), avant et après `dotnet format`. `dotnet format` n'a
+touché aucun fichier créé par cette fonctionnalité ; il a en revanche réaligné des paramètres de
+`record` multi-lignes dans onze fichiers préexistants (espaces d'alignement colonne supprimés,
+aucun changement sémantique) — commité séparément (`style: dotnet format — alignement des
+paramètres de record`).
+
+**Statut :** `terminé`
+
+---
+
+## Revue finale de branche — 5 findings sur le pouvoir Sonar
+
+**Prompt :** Revue finale « whole-branch » de `feat/E-10-16-power-sonar` (8 tâches déjà
+committées et individuellement relues clean) ayant fait remonter 5 findings « Important »
+transversaux, invisibles tâche par tâche : divergence 409/400 avec `contracts/openapi.yaml`,
+`Target` nullable non gardé côté `UsePowerAsync`, `PowersEnabled` contredisant le loadout par
+défaut, `JoinGameRequest.Powers` silencieusement ignoré, commentaire obsolète dans
+`Battle.razor`. Consigne : corriger exactement ces 5 points en une seule passe, rien d'autre.
+
+**Décision et justification :**
+
+1. **`INSUFFICIENT_ENERGY` classé en conflit (409), pas en requête invalide (400).**
+   `contracts/openapi.yaml` est la source de vérité du contrat HTTP (règle explicite de
+   `CLAUDE.md`) et documente déjà cet exemple en 409. `IsPowerConflictCode` ne listait que
+   `PowerAlreadyCharging`/`PowerOnCooldown`/`PowerExhausted` : ajout de
+   `ErrorCodes.InsufficientEnergy` à cette liste. `PowerNotEquipped` et `InvalidTarget` restent
+   en 400 — ce sont des erreurs de requête (pouvoir non équipé, cible malformée), pas des
+   conflits d'état de partie, distinction que le YAML respecte aussi.
+2. **Garde explicite sur `Target` null plutôt que dépendre de la validation FluentValidation en
+   amont.** `UsePowerRequest.Target` est déclaré non-nullable côté C#, mais `System.Text.Json`
+   accepte silencieusement un corps sans `target` ou `"target": null` — rien ne l'empêchait
+   d'atteindre `SonarHandler.Validate`, qui déréférence `Cell` sans garde et lève une
+   `NullReferenceException` non catchée par le pipeline `GameException` → `ProblemDetails`.
+   Plutôt que de modifier `SonarHandler` (chaque futur handler répéterait la même faille) ou
+   d'ajouter une règle FluentValidation séparée du reste de la logique d'erreurs pouvoir, un
+   garde-fou est posé au même endroit que les autres vérifications de `UsePowerAsync` (tour,
+   statut de partie) : `throw new GameException(ErrorCodes.InvalidTarget, …)` sans
+   `isConflict`, donc 400 — c'est une requête malformée, pas un état de jeu en conflit.
+3. **`PowersEnabled` recalculé à partir d'`equippedPowers`, pas de `req.Powers` brut.** Depuis la
+   tâche précédente, une liste `Powers` vide déclenche déjà un loadout par défaut `[Sonar]` pour
+   les deux joueurs (`equippedPowers`), mais `Game.PowersEnabled` (exposé en lobby via
+   `GameSummary`/`OpenGameDto`) restait calculé sur `req.Powers.Count > 0` — un vestige d'avant
+   cette décision, qui annonçait « pouvoirs désactivés » alors que Sonar était activement
+   équipé et jouable. Corrigé pour réutiliser la variable déjà calculée
+   (`equippedPowers.Count > 0`) : en pratique toujours vrai aujourd'hui (le fallback garantit au
+   moins Sonar), ce qui est l'état honnête du système tant qu'E-13 n'introduit pas de vraie
+   désactivation volontaire des pouvoirs. Doc XML de `CreateGameRequest.Powers` mise à jour en
+   conséquence (ne prétend plus qu'une liste vide « désactive la mécanique »).
+4. **Pas de transfert du loadout du joueur qui rejoint (`JoinGameRequest.Powers`) — juste un
+   commentaire explicite du manque.** `PlayerState.EquippedPowers` est get-only, fixé une seule
+   fois à la construction ; le rendre modifiable après coup pour un flux qui n'a aujourd'hui
+   aucun chemin d'exécution possible (pas de mode en ligne réel encore branché) aurait été de la
+   sur-ingénierie hors du périmètre de cette revue. Le gap est documenté en commentaire au point
+   exact où `req.Powers` est disponible mais non utilisé, pour qu'un futur lecteur — ou l'auteur
+   d'E-13 — voie explicitement ce qui est fixé et ce qui ne l'est délibérément pas encore.
+5. **Commentaire de `Battle.razor::HandlePower` corrigé en TODO honnête plutôt que supprimé.**
+   Le commentaire prétendait qu'un pouvoir `TargetKind.None` serait « activé immédiatement »,
+   alors que le corps de la méthode ne fait que `_pendingPower = id;` pour tous les pouvoirs,
+   sans branche. Un futur pouvoir sans cible (ex. `RadioIntercept`, déjà au catalogue) resterait
+   donc bloqué en attente d'un clic qu'il n'utilise pas. Plutôt que d'implémenter la logique
+   manquante (hors scope, pas de pouvoir `TargetKind.None` existant à ce jour pour la tester),
+   le commentaire est corrigé pour décrire fidèlement le comportement actuel et signaler le gap
+   comme TODO explicite.
+
+**Scénario de vérification :**
+- 3 tests ajoutés dans `tests/Naval.Tests/Api/GameServiceTests.cs` :
+  `UsePowerAsync_rejects_insufficient_energy_as_a_conflict` (vérifie `Code ==
+  InsufficientEnergy` et `IsConflict == true`), `UsePowerAsync_rejects_a_missing_target_as_invalid_target`
+  (`Target: null!`, vérifie `Code == InvalidTarget` et `IsConflict == false`),
+  `CreateGameAsync_reports_powers_enabled_even_when_powers_defaults_to_sonar` (`Powers: []`,
+  vérifie `game.PowersEnabled == true`).
+- `dotnet build` : 0 avertissement, 0 erreur.
+- `dotnet test` : suite complète.
+- Relecture de `contracts/openapi.yaml` (recherche « INSUFFICIENT_ENERGY ») pour confirmer
+  l'alignement du code sur le statut 409 documenté avant de modifier `IsPowerConflictCode`.
+- `git status --short` après les modifications : seuls les 4 fichiers autorisés par la tâche
+  (`GameService.cs`, `Requests.cs`, `Battle.razor`, `GameServiceTests.cs`) apparaissent modifiés.
+
+**Résultat observé :** `dotnet build` → 0 avertissement. `dotnet test` → 61/61 verts (58
+préexistants + 3 nouveaux). Aucun fichier hors du périmètre autorisé n'a été touché.
+
+**Statut :** `terminé`

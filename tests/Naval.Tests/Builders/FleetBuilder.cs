@@ -36,15 +36,15 @@ public sealed class FleetBuilder
 
     public static FleetBuilder Classic() =>
         new FleetBuilder()
-            .WithShip(ShipType.Carrier,    0, 0, Orientation.Horizontal)
+            .WithShip(ShipType.Carrier, 0, 0, Orientation.Horizontal)
             .WithShip(ShipType.Battleship, 0, 1, Orientation.Horizontal)
-            .WithShip(ShipType.Cruiser,    0, 2, Orientation.Horizontal)
-            .WithShip(ShipType.Submarine,  0, 3, Orientation.Horizontal)
-            .WithShip(ShipType.Destroyer,  0, 4, Orientation.Horizontal);
+            .WithShip(ShipType.Cruiser, 0, 2, Orientation.Horizontal)
+            .WithShip(ShipType.Submarine, 0, 3, Orientation.Horizontal)
+            .WithShip(ShipType.Destroyer, 0, 4, Orientation.Horizontal);
 
     public static FleetBuilder Skirmish() =>
         new FleetBuilder()
-            .WithShip(ShipType.Cruiser,   0, 0, Orientation.Horizontal)
+            .WithShip(ShipType.Cruiser, 0, 0, Orientation.Horizontal)
             .WithShip(ShipType.Submarine, 0, 1, Orientation.Horizontal)
             .WithShip(ShipType.Destroyer, 0, 2, Orientation.Horizontal);
 }

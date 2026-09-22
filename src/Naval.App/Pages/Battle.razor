@@ -27,6 +27,12 @@
                     <div class="battle-panel__side">
                         <EnergyGauge Energy="current.Self.Energy" />
                         <ChargeMeter Charge="current.Opponent.Charge" />
+                        @if (_pendingPower is { } pending)
+                        {
+                            <p class="power-bar__targeting" role="status">
+                                Ciblez une case sur la grille adverse pour @pending.
+                            </p>
+                        }
                         <PowerBar Powers="current.Self.Powers" OnPowerActivated="HandlePower" />
                         <EventLog Events="current.RecentEvents" />
                     </div>
@@ -46,8 +52,16 @@
         }
     }
 
+    private PowerId? _pendingPower;
+
     private async Task HandleFire(CoordinateDto target)
     {
+        if (_pendingPower is { } powerId)
+        {
+            await ActivatePowerOn(powerId, target);
+            return;
+        }
+
         var before = Store.CurrentGame;
         Audio.Play("fire");
         await Store.FireAsync(target);
@@ -57,6 +71,13 @@
         {
             Navigation.NavigateTo("/result");
         }
+    }
+
+    private async Task ActivatePowerOn(PowerId powerId, CoordinateDto target)
+    {
+        _pendingPower = null;
+        Audio.Play("sonar-ping");
+        await Store.UsePowerAsync(powerId, new PowerTargetDto(target, null, null, null, null));
     }
 
     /// <summary>
@@ -93,10 +114,14 @@
     private static int CountHits(BoardViewDto board) =>
         board.Rows.Sum(row => row.Count(c => c is 'x' or '#'));
 
-    private async Task HandlePower(PowerId id)
+    private void HandlePower(PowerId id)
     {
-        Audio.Play("sonar-ping");
-        await Store.UsePowerAsync(id, new PowerTargetDto(null, null, null, null, null));
+        // TODO(E-16, futur pouvoir TargetKind.None) : cette méthode arme systématiquement
+        // _pendingPower et attend un clic sur la grille adverse. C'est correct pour Sonar
+        // (TargetKind.Area), mais un futur pouvoir sans cible (TargetKind.None, ex.
+        // RadioIntercept) resterait bloqué en attente d'un clic qu'il n'utilise pas — à
+        // traiter quand un tel pouvoir sera implémenté.
+        _pendingPower = id;
     }
 
     /// <summary>

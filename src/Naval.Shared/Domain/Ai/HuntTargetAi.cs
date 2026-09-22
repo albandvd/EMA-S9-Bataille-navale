@@ -46,7 +46,7 @@ public sealed class HuntTargetAi : IAiStrategy
 
                 var axisTargets = new List<Coordinate>();
                 if (minX - 1 >= 0) axisTargets.Add(new Coordinate(minX - 1, row));
-                if (maxX + 1 < w)  axisTargets.Add(new Coordinate(maxX + 1, row));
+                if (maxX + 1 < w) axisTargets.Add(new Coordinate(maxX + 1, row));
 
                 var valid = axisTargets.Where(c => !board.HasBeenShot(c)).ToList();
                 if (valid.Count > 0) return valid[_rng.Next(valid.Count)];
@@ -59,7 +59,7 @@ public sealed class HuntTargetAi : IAiStrategy
 
                 var axisTargets = new List<Coordinate>();
                 if (minY - 1 >= 0) axisTargets.Add(new Coordinate(col, minY - 1));
-                if (maxY + 1 < h)  axisTargets.Add(new Coordinate(col, maxY + 1));
+                if (maxY + 1 < h) axisTargets.Add(new Coordinate(col, maxY + 1));
 
                 var valid = axisTargets.Where(c => !board.HasBeenShot(c)).ToList();
                 if (valid.Count > 0) return valid[_rng.Next(valid.Count)];

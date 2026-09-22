@@ -42,38 +42,38 @@ public static class GameHubMethods
 {
     public const string Path = "/hub/game";
 
-    public const string JoinGame     = nameof(JoinGame);
-    public const string LeaveGame    = nameof(LeaveGame);
-    public const string SetReady     = nameof(SetReady);
-    public const string Fire         = nameof(Fire);
-    public const string UsePower     = nameof(UsePower);
+    public const string JoinGame = nameof(JoinGame);
+    public const string LeaveGame = nameof(LeaveGame);
+    public const string SetReady = nameof(SetReady);
+    public const string Fire = nameof(Fire);
+    public const string UsePower = nameof(UsePower);
     public const string CancelCharge = nameof(CancelCharge);
-    public const string SendEmote    = nameof(SendEmote);
-    public const string Forfeit      = nameof(Forfeit);
+    public const string SendEmote = nameof(SendEmote);
+    public const string Forfeit = nameof(Forfeit);
 }
 
 /// <summary>Codes d'erreur métier. Partagés pour que le front n'en invente aucun.</summary>
 public static class ErrorCodes
 {
-    public const string ValidationFailed    = "VALIDATION_FAILED";
-    public const string MissingToken        = "MISSING_TOKEN";
-    public const string NotAPlayer          = "NOT_A_PLAYER";
-    public const string GameNotFound        = "GAME_NOT_FOUND";
-    public const string GameFull            = "GAME_FULL";
-    public const string InvalidJoinCode     = "INVALID_JOIN_CODE";
-    public const string NotYourTurn         = "NOT_YOUR_TURN";
-    public const string GameNotInProgress   = "GAME_NOT_IN_PROGRESS";
+    public const string ValidationFailed = "VALIDATION_FAILED";
+    public const string MissingToken = "MISSING_TOKEN";
+    public const string NotAPlayer = "NOT_A_PLAYER";
+    public const string GameNotFound = "GAME_NOT_FOUND";
+    public const string GameFull = "GAME_FULL";
+    public const string InvalidJoinCode = "INVALID_JOIN_CODE";
+    public const string NotYourTurn = "NOT_YOUR_TURN";
+    public const string GameNotInProgress = "GAME_NOT_IN_PROGRESS";
     public const string CellAlreadyTargeted = "CELL_ALREADY_TARGETED";
-    public const string OutOfBounds         = "OUT_OF_BOUNDS";
-    public const string OverlappingShips    = "OVERLAPPING_SHIPS";
-    public const string FleetIncomplete     = "FLEET_INCOMPLETE";
-    public const string FleetAlreadyPlaced  = "FLEET_ALREADY_PLACED";
-    public const string InsufficientEnergy  = "INSUFFICIENT_ENERGY";
-    public const string PowerOnCooldown     = "POWER_ON_COOLDOWN";
-    public const string PowerNotEquipped    = "POWER_NOT_EQUIPPED";
-    public const string PowerExhausted      = "POWER_EXHAUSTED";
-    public const string PowerAlreadyCharging= "POWER_ALREADY_CHARGING";
-    public const string InvalidTarget       = "INVALID_TARGET";
-    public const string CarrierRequired     = "CARRIER_REQUIRED";
-    public const string ShipAlreadyDamaged  = "SHIP_ALREADY_DAMAGED";
+    public const string OutOfBounds = "OUT_OF_BOUNDS";
+    public const string OverlappingShips = "OVERLAPPING_SHIPS";
+    public const string FleetIncomplete = "FLEET_INCOMPLETE";
+    public const string FleetAlreadyPlaced = "FLEET_ALREADY_PLACED";
+    public const string InsufficientEnergy = "INSUFFICIENT_ENERGY";
+    public const string PowerOnCooldown = "POWER_ON_COOLDOWN";
+    public const string PowerNotEquipped = "POWER_NOT_EQUIPPED";
+    public const string PowerExhausted = "POWER_EXHAUSTED";
+    public const string PowerAlreadyCharging = "POWER_ALREADY_CHARGING";
+    public const string InvalidTarget = "INVALID_TARGET";
+    public const string CarrierRequired = "CARRIER_REQUIRED";
+    public const string ShipAlreadyDamaged = "SHIP_ALREADY_DAMAGED";
 }

@@ -28,7 +28,11 @@ public sealed class PlayerState
     public int PowersUsed { get; set; }
     public int EnergySpent { get; set; }
 
-    public PlayerState(PlayerId id, string name, PlayerSlot slot, string token, int gridWidth, int gridHeight, bool isAi = false)
+    public IReadOnlyList<PowerId> EquippedPowers { get; }
+    public List<Powers.PowerSlot> PowerSlots { get; }
+
+    public PlayerState(PlayerId id, string name, PlayerSlot slot, string token, int gridWidth, int gridHeight,
+        bool isAi = false, IReadOnlyList<PowerId>? equippedPowers = null)
     {
         Id = id;
         Name = name;
@@ -38,5 +42,12 @@ public sealed class PlayerState
         IsConnected = !isAi;
         IncomingBoard = new Board(gridWidth, gridHeight);
         OutgoingBoard = new Board(gridWidth, gridHeight);
+
+        EquippedPowers = equippedPowers ?? [];
+        PowerSlots = EquippedPowers
+            .Select(powerId => new Powers.PowerSlot(
+                powerId,
+                PowerCatalog.All.First(d => d.Id == powerId).MaxUses))
+            .ToList();
     }
 }

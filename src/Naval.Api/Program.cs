@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using Naval.Api.Endpoints;
 using Naval.Api.Infrastructure;
 using Naval.Api.Services;
+using Naval.Shared.Domain.Powers;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -9,6 +10,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSingleton<IGameStore, InMemoryGameStore>();
 builder.Services.AddScoped<GameService>();
 builder.Services.AddScoped<AiTurnService>();
+builder.Services.AddSingleton<IPowerHandler, SonarHandler>();
+builder.Services.AddSingleton(sp => new PowerRegistry(sp.GetServices<IPowerHandler>()));
 
 // ── JSON ──
 builder.Services.ConfigureHttpJsonOptions(o =>
@@ -50,7 +53,7 @@ app.UseExceptionHandler(errApp => errApp.Run(async ctx =>
                 404 => "Non trouvé",
                 403 => "Interdit",
                 409 => "Conflit",
-                _   => "Requête invalide"
+                _ => "Requête invalide"
             },
             gex.Message,
             gex.Code);
@@ -81,6 +84,7 @@ GameEndpoints.Map(app);
 FleetEndpoints.Map(app);
 ShotEndpoints.Map(app);
 CatalogEndpoints.Map(app);
+PowerEndpoints.Map(app);
 
 app.Run();
 

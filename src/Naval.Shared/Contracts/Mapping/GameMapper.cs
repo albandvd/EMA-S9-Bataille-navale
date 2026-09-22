@@ -1,5 +1,6 @@
 using Naval.Shared.Domain;
 using Naval.Shared.Domain.Events;
+using Naval.Shared.Domain.Powers;
 
 namespace Naval.Shared.Contracts.Mapping;
 
@@ -38,7 +39,7 @@ public static class GameMapper
             Energy: player.Energy,
             Board: ToBoardViewDto(board, player.IncomingBoard.Width, player.IncomingBoard.Height),
             Fleet: player.Fleet?.Ships.Select(ToShipStateDtoOwn).ToList() ?? [],
-            Powers: []);
+            Powers: player.PowerSlots.Select(s => ToPowerSlotDto(s, player.Energy)).ToList());
     }
 
     public static OpponentViewDto ToOpponentViewDto(PlayerState opponent, PlayerState viewer)
@@ -63,7 +64,7 @@ public static class GameMapper
             TargetBoard: ToBoardViewDto(targetBoard, viewer.OutgoingBoard.Width, viewer.OutgoingBoard.Height),
             SunkShips: sunkShips,
             Charge: new OpponentChargeDto(false, null, null, null),
-            EquippedPowers: []);
+            EquippedPowers: opponent.EquippedPowers);
     }
 
     public static ShotResultDto ToShotResultDto(
@@ -99,14 +100,36 @@ public static class GameMapper
             ]);
     }
 
+    public static PowerResultDto ToPowerResultDto(Game game, PowerActivationResult activation) =>
+        new(
+            GameId: game.Id.Value,
+            TurnNumber: game.TurnNumber,
+            PowerId: activation.PowerId,
+            Charging: false,
+            ChargeRemaining: 0,
+            EnergySpent: activation.EnergySpent,
+            EnergyRemaining: activation.EnergyRemaining,
+            RevealedCells: activation.Effect.RevealedCells
+                .Select(c => new RevealedCellDto(new CoordinateDto(c.Cell.X, c.Cell.Y), c.Occupied))
+                .ToList(),
+            RevealedCount: activation.Effect.RevealedCount,
+            Shots: [],
+            Message: activation.Effect.Message,
+            NextPlayerId: null,
+            GameOver: false,
+            WinnerId: null);
+
     public static GameEventDto ToEventDto(GameEvent evt)
     {
         var type = evt switch
         {
-            ShotFiredEvent   => "ShotFired",
+            ShotFiredEvent => "ShotFired",
             TurnChangedEvent => "TurnChanged",
-            GameOverEvent    => "GameOver",
+            GameOverEvent => "GameOver",
             PlayerReadyEvent => "PlayerJoined",
+            PowerActivatedEvent => "PowerActivated",
+            PowerResolvedEvent => "PowerResolved",
+            EnergyChangedEvent => "EnergyChanged",
             _ => "Unknown"
         };
 
@@ -130,6 +153,18 @@ public static class GameMapper
         CreatedAtUtc: s.CreatedAtUtc);
 
     // ─── Helpers privés ───
+
+    private static PowerSlotDto ToPowerSlotDto(PowerSlot slot, int casterEnergy)
+    {
+        var definition = PowerCatalog.All.First(d => d.Id == slot.PowerId);
+        return new PowerSlotDto(
+            PowerId: slot.PowerId,
+            Status: slot.Status,
+            ChargeRemaining: slot.ChargeRemaining,
+            CooldownRemaining: slot.CooldownRemaining,
+            UsesLeft: slot.UsesLeft,
+            CanAffordNow: slot.Status == PowerSlotStatus.Ready && casterEnergy >= definition.EnergyCost);
+    }
 
     private static BoardViewDto ToBoardViewDto(char[,] grid, int width, int height)
     {

@@ -12,25 +12,27 @@ public readonly record struct CoordinateDto(int X, int Y);
 /// <param name="GridHeight">8 à 16.</param>
 /// <param name="FleetPreset">"Classic" (5 navires) ou "Skirmish" (3 navires).</param>
 /// <param name="AiLevel">Requis si Mode == SinglePlayer, ignoré sinon.</param>
-/// <param name="Powers">Exactement 3 pouvoirs, ou aucun pour désactiver la mécanique.</param>
+/// <param name="Powers">Exactement 3 pouvoirs pour un loadout personnalisé ; une liste vide
+/// équipe Sonar par défaut sur les deux joueurs (temporaire, en attendant la sélection de
+/// loadout complète, E-13).</param>
 /// <param name="TurnTimeoutSeconds">0 = pas de limite. 10 à 120 sinon.</param>
 /// <param name="Seed">Graine de génération, pour rejouer une partie à l'identique. Optionnel.</param>
 public sealed record CreateGameRequest(
-    string            PlayerName,
-    GameMode          Mode,
-    int               GridWidth,
-    int               GridHeight,
-    string            FleetPreset,
-    AiLevel?          AiLevel,
+    string PlayerName,
+    GameMode Mode,
+    int GridWidth,
+    int GridHeight,
+    string FleetPreset,
+    AiLevel? AiLevel,
     IReadOnlyList<PowerId> Powers,
-    int               TurnTimeoutSeconds,
-    int?              Seed);
+    int TurnTimeoutSeconds,
+    int? Seed);
 
 /// <summary>Rejoint une partie privée par son code, ou une partie publique par son identifiant.</summary>
 public sealed record JoinGameRequest(
-    string  PlayerName,
+    string PlayerName,
     string? JoinCode,
-    Guid?   GameId,
+    Guid? GameId,
     IReadOnlyList<PowerId> Powers);
 
 // ─────────────────────────────── Déploiement ───────────────────────────────
@@ -38,9 +40,9 @@ public sealed record JoinGameRequest(
 /// <param name="Type">Type de navire ; détermine sa taille via le preset de flotte.</param>
 /// <param name="Origin">Case la plus en haut à gauche occupée par le navire.</param>
 public sealed record ShipPlacementDto(
-    ShipType      Type,
+    ShipType Type,
     CoordinateDto Origin,
-    Orientation   Orientation);
+    Orientation Orientation);
 
 /// <summary>Soumet la flotte complète. Rejeté si un seul navire est invalide : pas de placement partiel.</summary>
 public sealed record PlaceFleetRequest(IReadOnlyList<ShipPlacementDto> Ships);
@@ -64,10 +66,10 @@ public sealed record FireRequest(CoordinateDto Target);
 /// <param name="CarrierShipId">Navire porteur, requis si ChargeTurns ≥ 3.</param>
 public sealed record PowerTargetDto(
     CoordinateDto? Cell,
-    string?        ShipId,
-    int?           LineIndex,
-    bool?          LineIsRow,
-    string?        CarrierShipId);
+    string? ShipId,
+    int? LineIndex,
+    bool? LineIsRow,
+    string? CarrierShipId);
 
 /// <summary>Active un pouvoir équipé.</summary>
 public sealed record UsePowerRequest(PowerId PowerId, PowerTargetDto Target);

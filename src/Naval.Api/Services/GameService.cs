@@ -3,6 +3,7 @@ using Naval.Shared.Contracts.Mapping;
 using Naval.Shared.Domain;
 using Naval.Shared.Domain.Ai;
 using Naval.Shared.Domain.Events;
+using Naval.Shared.Domain.Powers;
 
 namespace Naval.Api.Services;
 
@@ -16,10 +17,12 @@ public sealed class GameService
         "ABCDEFGHJKLMNPQRSTUVWXYZ23456789".ToCharArray();
 
     private readonly IGameStore _store;
+    private readonly PowerRegistry _powers;
 
-    public GameService(IGameStore store)
+    public GameService(IGameStore store, PowerRegistry powers)
     {
         _store = store;
+        _powers = powers;
     }
 
     // ─── Création ───
@@ -41,27 +44,29 @@ public sealed class GameService
         if (req.Mode == GameMode.PrivateOnline)
             joinCode = GenerateJoinCode(rng);
 
+        var equippedPowers = req.Powers.Count > 0 ? req.Powers : (IReadOnlyList<PowerId>)[PowerId.Sonar];
+
         var p1 = new PlayerState(p1Id, req.PlayerName, PlayerSlot.One, p1Token,
-            req.GridWidth, req.GridHeight);
+            req.GridWidth, req.GridHeight, equippedPowers: equippedPowers);
 
         PlayerState p2;
         if (req.Mode == GameMode.SinglePlayer)
         {
             var aiId = PlayerId.New();
             p2 = new PlayerState(aiId, "IA", PlayerSlot.Two, Guid.NewGuid().ToString(),
-                req.GridWidth, req.GridHeight, isAi: true);
+                req.GridWidth, req.GridHeight, isAi: true, equippedPowers: equippedPowers);
         }
         else
         {
             var p2Id = PlayerId.New();
             p2 = new PlayerState(p2Id, "En attente…", PlayerSlot.Two,
-                Guid.NewGuid().ToString(), req.GridWidth, req.GridHeight);
+                Guid.NewGuid().ToString(), req.GridWidth, req.GridHeight, equippedPowers: equippedPowers);
         }
 
         var game = new Game(
             gameId, req.Mode, joinCode, req.FleetPreset,
             req.GridWidth, req.GridHeight,
-            powersEnabled: req.Powers.Count > 0,
+            powersEnabled: equippedPowers.Count > 0,
             turnTimeoutSeconds: req.TurnTimeoutSeconds,
             p1, p2);
 
@@ -103,6 +108,11 @@ public sealed class GameService
             game.Player2.Name = req.PlayerName;
             game.Player2.Token = p2Token;
             game.Player2.IsConnected = true;
+
+            // Note : req.Powers (le loadout du joueur qui rejoint) n'est pas encore appliqué ici — le
+            // joueur 2 garde le loadout par défaut posé à la création (CreateGameAsync). Transférer le
+            // vrai loadout du joueur qui rejoint suppose de rendre PlayerState.EquippedPowers modifiable
+            // après construction ; à traiter avec E-13 (sélection de loadout complète).
 
             game.Status = GameStatus.AwaitingDeployment;
 
@@ -147,7 +157,7 @@ public sealed class GameService
             {
                 var code = errors[0].Kind switch
                 {
-                    PlacementErrorKind.OutOfBounds     => ErrorCodes.OutOfBounds,
+                    PlacementErrorKind.OutOfBounds => ErrorCodes.OutOfBounds,
                     PlacementErrorKind.OverlappingShips => ErrorCodes.OverlappingShips,
                     _ => ErrorCodes.FleetIncomplete
                 };
@@ -343,6 +353,59 @@ public sealed class GameService
         }
     }
 
+    // ─── Pouvoirs ───
+
+    public async Task<(PowerResultDto result, Game game)> UsePowerAsync(
+        Guid gameId, string playerToken, UsePowerRequest req, CancellationToken ct)
+    {
+        var game = await RequireGameAsync(gameId, ct);
+
+        await game.Lock.WaitAsync(ct);
+        try
+        {
+            var caster = game.GetPlayerByToken(playerToken)
+                ?? throw new GameException(ErrorCodes.NotAPlayer, "Token invalide.");
+
+            if (game.Status != GameStatus.InProgress)
+                throw new GameException(ErrorCodes.GameNotInProgress, "La partie n'est pas en cours.",
+                    isConflict: true);
+
+            if (game.CurrentPlayerId != caster.Id)
+                throw new GameException(ErrorCodes.NotYourTurn, "Ce n'est pas votre tour.",
+                    isConflict: true);
+
+            if (req.Target is null)
+                throw new GameException(ErrorCodes.InvalidTarget, "Cible du pouvoir manquante.");
+
+            var target = game.GetOpponent(caster.Id);
+
+            var (activation, errorCode) = GameEngine.ActivatePower(
+                caster, target, req.PowerId, req.Target, _powers);
+
+            if (errorCode is not null)
+                throw new GameException(errorCode, GetPowerErrorMessage(errorCode),
+                    isConflict: IsPowerConflictCode(errorCode));
+
+            caster.PowersUsed++;
+            caster.EnergySpent += activation!.EnergySpent;
+
+            game.AddEvent(new PowerActivatedEvent(
+                game.NextSequence(), DateTimeOffset.UtcNow, caster.Id, activation.PowerId,
+                $"{caster.Name} active {activation.PowerId}."));
+            game.AddEvent(new PowerResolvedEvent(
+                game.NextSequence(), DateTimeOffset.UtcNow, caster.Id, activation.PowerId,
+                activation.Effect.RevealedCount, activation.Effect.Message));
+
+            await _store.SaveAsync(game, ct);
+
+            return (GameMapper.ToPowerResultDto(game, activation), game);
+        }
+        finally
+        {
+            game.Lock.Release();
+        }
+    }
+
     // ─── Lecture ───
 
     public async Task<GameStateDto> GetGameStateAsync(Guid gameId, string playerToken, CancellationToken ct)
@@ -388,6 +451,8 @@ public sealed class GameService
         game.TurnNumber = 1;
         game.CurrentPlayerId = game.Player1.Id;
 
+        GrantTurnStartBenefits(game, game.Player1);
+
         game.AddEvent(new TurnChangedEvent(
             game.NextSequence(), DateTimeOffset.UtcNow, game.Player1.Id, 1,
             "La bataille commence. Tour de " + game.Player1.Name + "."));
@@ -398,9 +463,23 @@ public sealed class GameService
         var next = game.GetOpponent(currentShooter);
         game.CurrentPlayerId = next.Id;
 
+        GrantTurnStartBenefits(game, next);
+
         game.AddEvent(new TurnChangedEvent(
             game.NextSequence(), DateTimeOffset.UtcNow, next.Id, game.TurnNumber,
             $"Tour de {next.Name}."));
+    }
+
+    /// <summary>E-10 : +1 énergie au joueur qui devient actif ; E-14 : ses cooldowns de
+    /// pouvoir avancent d'un tour au même moment.</summary>
+    private static void GrantTurnStartBenefits(Game game, PlayerState player)
+    {
+        player.Energy += 1;
+        GameEngine.TickPowerCooldowns(player);
+
+        game.AddEvent(new EnergyChangedEvent(
+            game.NextSequence(), DateTimeOffset.UtcNow, player.Id, 1, player.Energy,
+            $"{player.Name} gagne 1 énergie."));
     }
 
     private static string GenerateJoinCode(Random rng)
@@ -412,10 +491,25 @@ public sealed class GameService
 
     private static string GetShotErrorMessage(string code) => code switch
     {
-        ErrorCodes.OutOfBounds         => "La coordonnée est hors de la grille.",
+        ErrorCodes.OutOfBounds => "La coordonnée est hors de la grille.",
         ErrorCodes.CellAlreadyTargeted => "Vous avez déjà tiré sur cette case.",
         _ => "Tir invalide."
     };
+
+    private static string GetPowerErrorMessage(string code) => code switch
+    {
+        ErrorCodes.PowerNotEquipped => "Ce pouvoir n'est pas équipé.",
+        ErrorCodes.PowerAlreadyCharging => "Ce pouvoir est déjà en cours de charge.",
+        ErrorCodes.PowerOnCooldown => "Ce pouvoir est en recharge.",
+        ErrorCodes.PowerExhausted => "Ce pouvoir n'a plus de charges disponibles.",
+        ErrorCodes.InsufficientEnergy => "Énergie insuffisante.",
+        ErrorCodes.InvalidTarget => "Cible invalide pour ce pouvoir.",
+        _ => "Activation de pouvoir refusée."
+    };
+
+    private static bool IsPowerConflictCode(string code) =>
+        code is ErrorCodes.PowerAlreadyCharging or ErrorCodes.PowerOnCooldown or ErrorCodes.PowerExhausted
+            or ErrorCodes.InsufficientEnergy;
 
     private static string FormatShotMessage(string shooterName, Coordinate coord, ShotOutcome outcome)
     {
@@ -424,7 +518,7 @@ public sealed class GameService
         return outcome switch
         {
             ShotOutcome.Miss => $"{shooterName} tire en {col}{row} — à l'eau.",
-            ShotOutcome.Hit  => $"{shooterName} tire en {col}{row} — touché !",
+            ShotOutcome.Hit => $"{shooterName} tire en {col}{row} — touché !",
             ShotOutcome.Sunk => $"{shooterName} tire en {col}{row} — coulé !",
             _ => $"{shooterName} tire en {col}{row}."
         };
