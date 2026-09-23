@@ -13,6 +13,8 @@ builder.Services.AddScoped(sp => new HttpClient
 });
 
 builder.Services.AddScoped<IGameApiClient, GameApiClient>();
+builder.Services.AddScoped<IGameHubClient, GameHubClient>();
+builder.Services.AddScoped<LocalStorageService>();
 builder.Services.AddScoped<GameStateStore>();
 builder.Services.AddScoped<AudioService>();
 

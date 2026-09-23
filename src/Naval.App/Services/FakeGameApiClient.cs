@@ -33,8 +33,8 @@ public sealed class FakeGameApiClient : IGameApiClient
         var opponent = new OpponentViewDto(opponentId, "IA", true, true, 0, 0, 0, opponentBoard,
             [], new OpponentChargeDto(false, null, null, null), []);
 
-        _game = new GameStateDto(gameId, request.Mode, GameStatus.AwaitingDeployment, null, 0,
-            null, null, null, self, opponent, [], 0);
+        _game = new GameStateDto(gameId, request.Mode, GameStatus.AwaitingDeployment, null,
+            request.FleetPreset, 0, null, null, null, self, opponent, [], 0);
 
         return Task.FromResult(new CreateGameResponse(gameId, PlayerToken, null, GameStatus.AwaitingDeployment));
     }
@@ -179,6 +179,33 @@ public sealed class FakeGameApiClient : IGameApiClient
 
     public Task<IReadOnlyList<PowerDefinitionDto>> GetPowerCatalogAsync(CancellationToken ct) =>
         Task.FromResult(Catalog);
+
+    public Task<SpectatorViewDto> GetSpectatorViewAsync(Guid gameId, CancellationToken ct)
+    {
+        EnsureGame(gameId);
+        var game = _game!;
+
+        // Le fake ne modélise pas une flotte adverse distincte : on masque tout de même les
+        // marqueurs 'S' de la grille propre pour ne jamais exposer la position d'un navire non
+        // coulé, même dans cette simulation.
+        var player1 = new SpectatorPlayerViewDto(
+            game.Self.PlayerId, game.Self.Name, game.Self.Slot, true, false,
+            game.Self.Fleet.Count(s => !s.IsSunk), game.Self.Fleet.Count,
+            HideShipMarkers(game.Self.Board), game.Self.Fleet.Where(s => s.IsSunk).ToList());
+
+        var player2 = new SpectatorPlayerViewDto(
+            game.Opponent.PlayerId, game.Opponent.Name, PlayerSlot.Two,
+            game.Opponent.IsConnected, game.Opponent.IsAi,
+            game.Opponent.ShipsRemaining, game.Opponent.ShipsTotal,
+            game.Opponent.TargetBoard, game.Opponent.SunkShips);
+
+        return Task.FromResult(new SpectatorViewDto(
+            game.GameId, game.Mode, game.Status, game.TurnNumber, game.CurrentPlayerId,
+            game.TurnDeadlineUtc, game.WinnerId, player1, player2, game.RecentEvents));
+    }
+
+    private static BoardViewDto HideShipMarkers(BoardViewDto board) =>
+        board with { Rows = board.Rows.Select(row => row.Replace('S', '.')).ToList() };
 
     private static readonly IReadOnlyDictionary<string, FleetPresetDto> FleetPresets =
         new Dictionary<string, FleetPresetDto>

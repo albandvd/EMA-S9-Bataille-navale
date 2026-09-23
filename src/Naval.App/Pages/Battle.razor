@@ -19,6 +19,19 @@
     <BottomScreen>
         <DsBottomScreen>
             <DsErrorBanner Problem="Store.LastError" />
+
+            @if (Store.CurrentGame is { Mode: not GameMode.SinglePlayer } onlineGame && !onlineGame.Opponent.IsConnected)
+            {
+                <p class="ds-error-banner" role="alert">
+                    Adversaire déconnecté@(Store.OpponentGraceSecondsRemaining is { } g ? $" — {g}s pour revenir" : "").
+                </p>
+            }
+
+            @if (Store.LastReceivedEmote is { } emote)
+            {
+                <p class="emote-toast" @onclick="Store.ClearLastReceivedEmote">@EmoteLabel(emote) — l'adversaire</p>
+            }
+
             @if (Store.CurrentGame is { } current)
             {
                 <h2>Votre grille</h2>
@@ -26,6 +39,10 @@
                     <GridView Board="current.Self.Board" ShipSprites="ToSprites(current.Self.Fleet)" />
                     <div class="battle-panel__side">
                         <EnergyGauge Energy="current.Self.Energy" />
+                        @if (RemainingSeconds(current.TurnDeadlineUtc) is { } remaining)
+                        {
+                            <p class="turn-timer">Temps restant : @remaining s</p>
+                        }
                         <ChargeMeter Charge="current.Opponent.Charge" />
                         @if (_pendingPower is { } pending)
                         {
@@ -34,6 +51,18 @@
                             </p>
                         }
                         <PowerBar Powers="current.Self.Powers" OnPowerActivated="HandlePower" />
+                        @if (current.Mode != GameMode.SinglePlayer)
+                        {
+                            <div class="emote-picker">
+                                @foreach (var emoteCode in EmoteCodes)
+                                {
+                                    <button class="emote-picker__button" title="@emoteCode" @onclick="() => SendEmote(emoteCode)">
+                                        @EmoteLabel(emoteCode)
+                                    </button>
+                                }
+                            </div>
+                            <DsButton Label="Abandonner" OnClick="Forfeit" />
+                        }
                         <EventLog Events="current.RecentEvents" />
                     </div>
                 </div>
@@ -43,13 +72,30 @@
 </DsConsole>
 
 @code {
+    private static readonly EmoteCode[] EmoteCodes =
+    [
+        EmoteCode.GoodLuck, EmoteCode.WellPlayed, EmoteCode.Oops, EmoteCode.Thinking,
+        EmoteCode.Taunt, EmoteCode.Sorry, EmoteCode.Gg, EmoteCode.Hurry
+    ];
+
+    private System.Timers.Timer? _tickTimer;
+
     protected override void OnInitialized()
     {
         Store.StateChanged += OnStoreChanged;
+        Store.ShotResolved += OnShotResolved;
+
         if (Store.CurrentGame is null)
         {
             Navigation.NavigateTo("/lobby");
+            return;
         }
+
+        // Force un ré-affichage chaque seconde pour que le compte à rebours du timer de tour
+        // (E-07) avance même sans nouvel événement serveur.
+        _tickTimer = new System.Timers.Timer(1000);
+        _tickTimer.Elapsed += (_, _) => InvokeAsync(StateHasChanged);
+        _tickTimer.Start();
     }
 
     private PowerId? _pendingPower;
@@ -62,15 +108,8 @@
             return;
         }
 
-        var before = Store.CurrentGame;
         Audio.Play("fire");
         await Store.FireAsync(target);
-
-        PlayFireResult(before, Store.CurrentGame);
-        if (Store.CurrentGame?.Status == GameStatus.Finished)
-        {
-            Navigation.NavigateTo("/result");
-        }
     }
 
     private async Task ActivatePowerOn(PowerId powerId, CoordinateDto target)
@@ -81,10 +120,11 @@
     }
 
     /// <summary>
-    /// Choisit le bruitage du résultat en comparant l'état avant/après : ce n'est pas une
-    /// règle de jeu, seulement la lecture de ce que le serveur a déjà tranché.
+    /// Un seul point d'écoute pour le son de résultat de tir, qu'il vienne de ce joueur ou de
+    /// l'adversaire (poussé en temps réel par le hub) : le son décrit ce que le serveur a
+    /// tranché, jamais une règle de jeu recalculée côté client.
     /// </summary>
-    private void PlayFireResult(GameStateDto? before, GameStateDto? after)
+    private void OnShotResolved(ShotResultDto result)
     {
         if (Store.LastError is not null)
         {
@@ -92,27 +132,13 @@
             return;
         }
 
-        if (before is null || after is null)
+        Audio.Play(result.Outcome switch
         {
-            return;
-        }
-
-        if (after.Opponent.SunkShips.Count > before.Opponent.SunkShips.Count)
-        {
-            Audio.Play("sunk");
-        }
-        else if (CountHits(after.Opponent.TargetBoard) > CountHits(before.Opponent.TargetBoard))
-        {
-            Audio.Play("explosion");
-        }
-        else
-        {
-            Audio.Play("splash");
-        }
+            ShotOutcome.Sunk => "sunk",
+            ShotOutcome.Hit => "explosion",
+            _ => "splash"
+        });
     }
-
-    private static int CountHits(BoardViewDto board) =>
-        board.Rows.Sum(row => row.Count(c => c is 'x' or '#'));
 
     private void HandlePower(PowerId id)
     {
@@ -123,6 +149,26 @@
         // traiter quand un tel pouvoir sera implémenté.
         _pendingPower = id;
     }
+
+    private Task SendEmote(EmoteCode code) => Store.SendEmoteAsync(code);
+
+    private async Task Forfeit() => await Store.ForfeitAsync();
+
+    private static int? RemainingSeconds(DateTimeOffset? deadline) =>
+        deadline is { } d ? Math.Max(0, (int)(d - DateTimeOffset.UtcNow).TotalSeconds) : null;
+
+    private static string EmoteLabel(EmoteCode code) => code switch
+    {
+        EmoteCode.GoodLuck => "🍀 Bonne chance",
+        EmoteCode.WellPlayed => "👏 Bien joué",
+        EmoteCode.Oops => "😬 Oups",
+        EmoteCode.Thinking => "🤔 Réflexion",
+        EmoteCode.Taunt => "😏 Raillerie",
+        EmoteCode.Sorry => "🙏 Désolé",
+        EmoteCode.Gg => "🤝 GG",
+        EmoteCode.Hurry => "⏱️ Dépêche",
+        _ => code.ToString()
+    };
 
     /// <summary>
     /// Convertit des navires en sprites de grille. Ne produit un sprite que si le serveur a
@@ -150,7 +196,22 @@
         return sprites;
     }
 
-    private void OnStoreChanged() => InvokeAsync(StateHasChanged);
+    private void OnStoreChanged()
+    {
+        if (Store.CurrentGame?.Status is GameStatus.Finished or GameStatus.Abandoned)
+        {
+            Navigation.NavigateTo("/result");
+            return;
+        }
 
-    public void Dispose() => Store.StateChanged -= OnStoreChanged;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Store.StateChanged -= OnStoreChanged;
+        Store.ShotResolved -= OnShotResolved;
+        _tickTimer?.Stop();
+        _tickTimer?.Dispose();
+    }
 }

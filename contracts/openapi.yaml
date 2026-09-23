@@ -426,6 +426,26 @@ paths:
             application/problem+json:
               schema: { $ref: '#/components/schemas/ApiProblem' }
 
+  /api/games/{gameId}/spectate:
+    parameters:
+      - $ref: '#/components/parameters/GameId'
+    get:
+      tags: [Games]
+      summary: Vue spectateur (E-09)
+      description: |
+        Les deux grilles, telles que chaque joueur les a révélées à l'autre — jamais la
+        position d'un navire non coulé, y compris pour un tiers qui ne joue pas. Aucune
+        action possible depuis cette vue ; pas de `X-Player-Token` requis.
+      operationId: spectateGame
+      security: []
+      responses:
+        '200':
+          description: Vue spectateur
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SpectatorView' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   # ─────────────────────────────── Catalog ───────────────────────────────
 
   /api/catalog/powers:
@@ -842,12 +862,18 @@ components:
 
     GameState:
       type: object
-      required: [gameId, mode, status, turnNumber, self, opponent, recentEvents, eventCursor]
+      required: [gameId, mode, status, fleetPreset, turnNumber, self, opponent, recentEvents, eventCursor]
       properties:
         gameId:          { type: string, format: uuid }
         mode:            { $ref: '#/components/schemas/GameMode' }
         status:          { $ref: '#/components/schemas/GameStatus' }
         joinCode:        { type: string, nullable: true }
+        fleetPreset:
+          type: string
+          description: |
+            Indispensable au joueur qui a rejoint par code ou depuis le salon public : lui
+            seul n'a pas choisi ce preset à la création.
+          example: Classic
         turnNumber:      { type: integer }
         currentPlayerId: { type: string, format: uuid, nullable: true }
         turnDeadlineUtc: { type: string, format: date-time, nullable: true }
@@ -860,6 +886,40 @@ components:
         eventCursor:
           type: integer
           description: Dernier `sequence` inclus. À passer à GET /events?since= après reconnexion.
+
+    SpectatorPlayerView:
+      type: object
+      required: [playerId, name, slot, isConnected, isAi, shipsRemaining, shipsTotal, board, sunkShips]
+      description: Ce que l'ADVERSAIRE de ce joueur a découvert de sa flotte — jamais sa propre vue.
+      properties:
+        playerId:       { type: string, format: uuid }
+        name:           { type: string }
+        slot:           { $ref: '#/components/schemas/PlayerSlot' }
+        isConnected:    { type: boolean }
+        isAi:           { type: boolean }
+        shipsRemaining: { type: integer }
+        shipsTotal:     { type: integer }
+        board:          { $ref: '#/components/schemas/BoardView' }
+        sunkShips:
+          type: array
+          items: { $ref: '#/components/schemas/ShipState' }
+
+    SpectatorView:
+      type: object
+      required: [gameId, mode, status, turnNumber, player1, player2, recentEvents]
+      properties:
+        gameId:          { type: string, format: uuid }
+        mode:            { $ref: '#/components/schemas/GameMode' }
+        status:          { $ref: '#/components/schemas/GameStatus' }
+        turnNumber:      { type: integer }
+        currentPlayerId: { type: string, format: uuid, nullable: true }
+        turnDeadlineUtc: { type: string, format: date-time, nullable: true }
+        winnerId:        { type: string, format: uuid, nullable: true }
+        player1:         { $ref: '#/components/schemas/SpectatorPlayerView' }
+        player2:         { $ref: '#/components/schemas/SpectatorPlayerView' }
+        recentEvents:
+          type: array
+          items: { $ref: '#/components/schemas/GameEvent' }
 
     ShotResult:
       type: object

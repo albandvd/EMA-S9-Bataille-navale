@@ -1,7 +1,9 @@
 using System.Text.Json.Serialization;
 using Naval.Api.Endpoints;
+using Naval.Api.Hubs;
 using Naval.Api.Infrastructure;
 using Naval.Api.Services;
+using Naval.Shared.Contracts;
 using Naval.Shared.Domain.Powers;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,6 +14,12 @@ builder.Services.AddScoped<GameService>();
 builder.Services.AddScoped<AiTurnService>();
 builder.Services.AddSingleton<IPowerHandler, SonarHandler>();
 builder.Services.AddSingleton(sp => new PowerRegistry(sp.GetServices<IPowerHandler>()));
+builder.Services.AddScoped<GameNotifier>();
+builder.Services.AddSingleton<PresenceService>();
+builder.Services.AddHostedService<TurnTimeoutService>();
+
+// ── SignalR (E-04) ──
+builder.Services.AddSignalR();
 
 // ── JSON ──
 builder.Services.ConfigureHttpJsonOptions(o =>
@@ -85,6 +93,9 @@ FleetEndpoints.Map(app);
 ShotEndpoints.Map(app);
 CatalogEndpoints.Map(app);
 PowerEndpoints.Map(app);
+
+// ── Hub temps réel (E-04) ──
+app.MapHub<GameHub>(GameHubMethods.Path).RequireCors("app");
 
 app.Run();
 

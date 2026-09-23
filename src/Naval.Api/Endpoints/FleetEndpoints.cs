@@ -20,12 +20,17 @@ public static class FleetEndpoints
         PlaceFleetRequest req,
         HttpContext ctx,
         GameService svc,
+        GameNotifier notifier,
         CancellationToken ct)
     {
         var token = PlayerTokenAccessor.GetToken(ctx);
         if (token is null) return NavalProblemDetails.Unauthorized("En-tête X-Player-Token absent.");
 
         var game = await svc.PlaceFleetAsync(gameId, token, req, ct);
+        await notifier.PushGameStateAsync(gameId, ct);
+        if (game.Status == Naval.Shared.Contracts.GameStatus.InProgress)
+            await notifier.NotifyTurnChangedAsync(game);
+
         var viewer = game.GetPlayerByToken(token)!;
         return Results.Ok(Naval.Shared.Contracts.Mapping.GameMapper.ToGameStateDto(game, viewer));
     }
