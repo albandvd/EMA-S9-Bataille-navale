@@ -1,23 +1,58 @@
 # Bataille Navale
 
 Bataille navale à pouvoirs, jouable en solo contre l'IA ou en ligne à deux, dans une interface
-inspirée des consoles portables à deux écrans.
+inspirée des consoles portables à deux écrans. Serveur autoritaire : le client ne reçoit jamais
+la position d'un navire adverse non découvert.
 
-## Démarrage
+## Prérequis
+
+- [.NET SDK 10](https://dotnet.microsoft.com/download) — la version exacte est verrouillée par
+  [`global.json`](global.json) (`rollForward: latestFeature`, donc tout SDK 10.0.x récent
+  convient). Vérifiez avec `dotnet --list-sdks`.
+- Un navigateur récent (le front est du Blazor WebAssembly).
+- Docker + Docker Compose, uniquement si vous voulez lancer via conteneurs (§ « Avec Docker »).
+
+## Démarrage rapide (sans Docker)
 
 ```bash
-git clone <url> && cd bataille-navale
+git clone <url> && cd EMA-S9-Bataille-navale
 dotnet restore
-dotnet build
-dotnet test
-
-# Deux terminaux
-dotnet run --project src/Naval.Api   # https://localhost:7001
-dotnet run --project src/Naval.App   # https://localhost:7002
+dotnet build      # 0 avertissement attendu (TreatWarningsAsErrors)
+dotnet test       # 96 tests, tous verts
 ```
 
-La solution n'existe pas encore : les commandes de création sont dans
-[`docs/03-architecture.md` §7](docs/03-architecture.md).
+Puis, dans deux terminaux séparés :
+
+```bash
+dotnet run --project src/Naval.Api   # http://localhost:5119  (health : /health)
+dotnet run --project src/Naval.App   # http://localhost:5018
+```
+
+Ouvrez `http://localhost:5018` : c'est le front. L'API et le front se trouvent déjà l'un
+l'autre par défaut (`ApiBaseUrl` dans `src/Naval.App/wwwroot/appsettings.json` pointe sur
+`http://localhost:5119`, et la policy CORS de l'API autorise `http://localhost:5018` par
+défaut) — aucune configuration n'est nécessaire pour un premier lancement en local.
+
+Pour lancer en HTTPS (profils `https` des deux projets, ports 7001/7002), utilisez
+`dotnet run --project <projet> --launch-profile https`.
+
+## Avec Docker
+
+```bash
+cp .env.example .env   # à adapter si vous exposez le jeu au-delà de localhost
+docker compose up --build -d
+```
+
+Front sur `http://localhost:${APP_PUBLISHED_PORT:-8080}`, API sur
+`http://localhost:${API_PUBLISHED_PORT:-5119}`. Détails, variables d'environnement et
+dépannage : [`infra/docker/README.md`](infra/docker/README.md).
+
+## Jouer une partie
+
+1. Sur l'écran d'accueil, créez une partie solo (contre l'IA) ou en ligne.
+2. Déployez votre flotte (placement manuel ou `Flotte aléatoire`), puis validez.
+3. Tirez à tour de rôle jusqu'à la destruction d'une des deux flottes.
+4. Sur l'écran de résultat, **Rejouer** ramène au lobby pour démarrer une nouvelle partie.
 
 ## Où trouver quoi
 
@@ -29,43 +64,24 @@ La solution n'existe pas encore : les commandes de création sont dans
 | Les assets et comment les produire | `docs/04-assets.md` |
 | Le contrat HTTP | `contracts/openapi.yaml` |
 | Les DTO | `src/Naval.Shared/Contracts/` |
-| Les décisions déjà prises | `docs/adr/` |
+| Les décisions d'architecture (ADR) | `docs/adr/` |
 | Le journal des échanges avec l'IA (livrable noté) | `PROMPTS.md` |
+| Les revues critiques de propositions IA (livrable noté) | `REVUE-IA.md` |
+| Requêtes HTTP prêtes à l'emploi (VS Code / JetBrains) | `api.http` |
 
-## Travailler avec Claude Code
-
-`CLAUDE.md` charge le contexte du projet automatiquement. Cinq skills couvrent le domaine,
-l'API, le front, les tests et le journal.
-
-Slash-commands disponibles :
-
-| Commande | Effet |
-|---|---|
-| `/journal <contexte>` | Complète la dernière entrée de `PROMPTS.md` |
-| `/verifie-journal` | Audite `PROMPTS.md` avant le rendu |
-| `/contrat <changement>` | Modifie un DTO et l'OpenAPI ensemble, sans divergence |
-| `/pouvoir <nom>` | Implémente un pouvoir de bout en bout, tests inclus |
-
-Un hook `UserPromptSubmit` crée automatiquement une entrée brouillon dans `PROMPTS.md` à chaque
-prompt. Rendez les scripts exécutables après le clone :
+## Commandes utiles
 
 ```bash
-chmod +x .claude/hooks/*.sh
+dotnet build                                   # compile tout
+dotnet test                                    # tous les tests
+dotnet test --filter FullyQualifiedName~Powers # tests des pouvoirs
+dotnet format                                  # mise en forme
 ```
 
-Le hook a besoin de `jq` ou de `python3` (l'un des deux suffit) et échoue silencieusement sans.
+## Limites connues
 
-## Les quatre premiers jours
-
-1. **Jour 1, ensemble.** Créer la solution, figer `openapi.yaml` et les DTO, merger. Tout le
-   reste du projet dépend de ce contrat.
-2. **Jour 2.** Dev A : `Board`, `Ship`, placement, tests. Dev B : coque de console et grille
-   en CSS, branchées sur `FakeGameApiClient`.
-3. **Jour 3.** Dev A : résolution des tirs, tours, fin de partie, IA niveau 1. Dev B :
-   écran de déploiement.
-4. **Jour 4.** Brancher le front sur la vraie API. **Objectif : une partie solo jouable de
-   bout en bout.**
-
-Ensuite seulement : SignalR, puis les pouvoirs un par un, puis le polish.
-
-Ne commencez pas les pouvoirs avant le jour 4. C'est l'erreur qui coule ce genre de projet.
+- Pas de persistance (parties en mémoire, `E-27` non demandée), pas de TLS en local, pas de CI.
+- Le point gRPC du référentiel n'est pas couvert par le code actuel (voir
+  [`docs/adr/ADR-002-rest-signalr-grpc.md`](docs/adr/ADR-002-rest-signalr-grpc.md)) : REST +
+  SignalR ont été jugés suffisants pour les besoins du jeu.
+- Le mute audio n'est pas persisté entre deux sessions ; les polices ne sont pas auto-hébergées.

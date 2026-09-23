@@ -38,9 +38,14 @@ demandée — seule l'implémentation change.
 
 Facile : brancher SQLite plus tard ne touchera que `InMemoryGameStore` et son enregistrement DI.
 
-Coûteux, et non résolu à ce jour : `ConcurrentDictionary` protège les accès à la table des
-parties, pas les mutations *à l'intérieur* d'une partie — deux requêtes concurrentes sur la même
-partie (par exemple un tir et un abandon simultanés) peuvent encore s'entrelacer. L'invariant
-« chaque mutation d'une partie est sérialisée par un `SemaphoreSlim` propre à cette partie »
-(`CLAUDE.md`) est décidé mais pas encore implémenté dans `GameService`/`InMemoryGameStore` : une
-dette technique explicite, pas un oubli silencieux.
+Coûteux : `ConcurrentDictionary` protège seulement les accès à la table des parties (créer,
+lister, retirer), pas les mutations *à l'intérieur* d'une partie. C'est pour ça que `Game`
+porte son propre `SemaphoreSlim` (`Game.Lock`), acquis par `GameService` autour de chaque
+méthode qui mute une partie (tir, placement, pouvoir, forfait, tour IA — neuf points d'entrée
+au total) : deux requêtes concurrentes sur la même partie (un tir et un abandon simultanés, par
+exemple) s'exécutent en séquence plutôt que de s'entrelacer. C'est l'invariant exigé par
+`CLAUDE.md` (« chaque mutation d'une partie est sérialisée par un `SemaphoreSlim` propre à
+cette partie »), et il est bien en place. Reste un angle mort : le verrou vit sur l'objet
+`Game` en mémoire, donc il ne protégerait plus rien le jour où `IGameStore` cesserait d'être un
+simple dictionnaire in-process (plusieurs instances de l'API derrière un load-balancer, par
+exemple) — un problème qui ne se pose pas tant qu'`E-27` n'est pas demandée.
