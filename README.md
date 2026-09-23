@@ -38,14 +38,38 @@ Pour lancer en HTTPS (profils `https` des deux projets, ports 7001/7002), utilis
 
 ## Avec Docker
 
+Deux conteneurs : `api` (Naval.Api, ASP.NET Core) et `app` (Naval.App compilé en statique,
+servi par nginx). Vérifié de bout en bout (build, santé des deux conteneurs, partie créée via
+l'API conteneurisée, gRPC-Web conteneurisé répond) — voir le détail des commandes ci-dessous.
+
 ```bash
-cp .env.example .env   # à adapter si vous exposez le jeu au-delà de localhost
+cp .env.example .env   # valeurs par défaut déjà adaptées à un test en localhost
 docker compose up --build -d
+docker compose ps      # les deux services doivent passer "healthy"
 ```
 
 Front sur `http://localhost:${APP_PUBLISHED_PORT:-8080}`, API sur
-`http://localhost:${API_PUBLISHED_PORT:-5119}`. Détails, variables d'environnement et
-dépannage : [`infra/docker/README.md`](infra/docker/README.md).
+`http://localhost:${API_PUBLISHED_PORT:-5119}` (santé : `/health`). Pour vérifier rapidement
+sans ouvrir de navigateur :
+
+```bash
+curl http://localhost:5119/health   # {"status":"Healthy","activeGames":0}
+curl -o /dev/null -w '%{http_code}\n' http://localhost:8080/   # 200
+```
+
+Le gRPC-Web du §« Rejouer une partie terminée » ci-dessus répond aussi bien contre l'API
+conteneurisée que contre `dotnet run` — mêmes ports, rien de spécifique à Docker.
+
+```bash
+docker compose logs -f      # suivre les deux services
+docker compose down         # arrêter et nettoyer
+```
+
+Si vous exposez le jeu au-delà de `localhost` (VM, réseau local), adaptez `API_PUBLIC_URL` et
+`APP_PUBLIC_URL` dans `.env` : ce sont des adresses que le **navigateur du joueur** doit pouvoir
+atteindre, jamais un nom de service Docker (`http://api:8080` ne résoudra pas côté client).
+Détails, variables d'environnement et dépannage :
+[`infra/docker/README.md`](infra/docker/README.md).
 
 ## Jouer une partie
 
