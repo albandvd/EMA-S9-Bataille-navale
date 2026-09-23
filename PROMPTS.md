@@ -937,6 +937,110 @@ préexistants + 3 nouveaux). Aucun fichier hors du périmètre autorisé n'a ét
 
 **Statut :** `terminé`
 
+## Deuxième pouvoir — Bombe lourde (P-24, `HeavyBomb`)
+
+**Prompt :** « En créant une nouvelle branche j'aimerais que tu fasses un nouveau pouvoir. Comme
+nous avons déjà un pouvoir de reconnaissance, j'aimerais avoir un pouvoir de destruction cette
+fois. Ce pouvoir aura un coût et un cooldown significativement plus longs (10-12). Je te laisse
+libre de décider de la puissance de la bombe et de sa manière de taper (en x, en +, une simple
+explosion autour du centre…) »
+
+**Décision et justification :**
+
+1. **Forme : carré 3×3 centré (Chebyshev ≤ 1), pas un X ni un +.** Le + existe déjà au
+   catalogue (`CrossStrike`, 5 cases pour 6 d'énergie) ; le X éparpille les tirs en diagonale,
+   où deux cases touchées n'appartiennent presque jamais au même navire. Le carré garantit
+   qu'un navire qui traverse le centre prend 3 touches alignées, ce qui correspond à l'idée
+   d'un pouvoir « de destruction » plutôt que de recherche. Rayon 1 et pas 2 (5×5 = 25 cases)
+   pour ne pas empiéter sur la future Frappe orbitale (P-11, 5×5 après 10 tours de charge).
+2. **Coût 10, cooldown 11, pas de charge.** Avec +1 énergie par tour, 10 d'énergie ≈ 6 à 8
+   tours d'économie (selon les touches) : la bombe arrive tard et une fois par tranche de ~11
+   tours, soit 2 à 3 utilisations sur une partie de 45-60 tirs. Pas de tours de charge : le
+   coût en tempo est déjà payé par l'économie d'énergie, et la charge + porteur est réservée
+   aux pouvoirs « dévastateurs » (≥ 3 tours) selon docs/02-pouvoirs.md §1.
+3. **Les touches de la bombe ne rapportent pas d'énergie.** Sans ça, une bombe qui touche 3
+   cases et coule un navire rembourserait 2+2+3 = 7 des 10 points dépensés. Implémenté par un
+   paramètre `grantEnergy` (défaut `true`) sur `GameEngine.ExecuteShot`, pour réutiliser la
+   résolution de tir existante plutôt que la dupliquer dans le handler.
+4. **La bombe remplace le tir du tour.** Sans ça, bombe + tir normal le même tour = 10 tirs.
+   Ajout de `Shots` et `ConsumesTurn` sur `PowerEffectResult` ; `GameService.UsePowerAsync`
+   émet un `ShotFiredEvent` par case (flux complet pour le replay E-26), puis clôt le tour via
+   un nouveau helper `EndTurn` — extrait de `FireAsync`/`PlayAiTurnAsync` où la logique fin de
+   partie/passage de main était dupliquée. En solo, l'endpoint déclenche le tour de l'IA comme
+   après un tir. `PowerResultDto` portait déjà `Shots`, `NextPlayerId`, `GameOver`,
+   `WinnerId` : aucun champ de contrat ajouté, seulement la valeur d'enum `HeavyBomb`.
+5. **Bord de grille et cases déjà visées.** La zone est tronquée à la grille (4 cases en coin) ;
+   les cases déjà visées sont sautées, pas refusées. Seule une zone intégralement déjà visée est
+   refusée (`INVALID_TARGET`, 400) pour ne pas faire payer 10 d'énergie pour rien. Aucune fuite
+   d'information : seules les cases frappées sont révélées, avec le même résultat qu'un tir.
+6. **Loadout par défaut `[Sonar, HeavyBomb]`.** Le front n'a pas encore de sélection de loadout
+   (E-13) : sans ce changement, la bombe serait inaccessible en jeu. Doc de
+   `CreateGameRequest.Powers` et `contracts/openapi.yaml` alignés.
+7. **Front : aucune logique propre à la bombe.** `Battle.razor` compare seulement la grille
+   adverse avant/après le pouvoir : si des cases ont été frappées, même retour sonore qu'un tir,
+   sinon ping ; redirection vers `/result` si la partie est finie. Icône `heavy-bomb.svg`.
+
+**Hors périmètre, signalé :** l'IA a la bombe dans son loadout mais n'utilise toujours aucun
+pouvoir (règle de symétrie §4.6 non encore traitée) ; l'équilibrage > 65 % de victoire n'a pas
+été mesuré.
+
+**Scénario de vérification :**
+- 6 tests dans `tests/Naval.Tests/Domain/Powers/HeavyBombTests.cs` : nominal (9 tirs, destroyer
+  coulé, énergie 10 → 0, cooldown 11), refus énergie insuffisante, refus zone entièrement
+  visée, centre hors grille, coin (4 cases exactement), cases déjà visées sautées.
+- 2 tests dans `GameServiceTests.cs` : la bombe passe la main à l'adversaire (`TurnNumber` 1 → 2),
+  et une bombe qui coule le dernier navire termine la partie (`GameOver`, `WinnerId`).
+- Run réel API + front : partie solo via l'API, 7 tirs pour atteindre 10 d'énergie, bombe en E5.
+  Puis dans le navigateur : déploiement manuel et affichage de l'écran de bataille.
+
+**Résultat observé :** `dotnet build` → 0 avertissement ; `dotnet format --verify-no-changes` →
+propre ; `dotnet test` → 69/69 verts (61 + 8). En réel : 9 tirs D4-F6 à `energyGained: 0`, énergie
+10 → 0, `nextPlayerId` = IA, l'IA a joué avant la réponse, cooldown affiché 10 au retour du
+joueur, second usage → 409 `POWER_ON_COOLDOWN`. Côté front, le bouton HeavyBomb et son icône
+s'affichent dans la barre de pouvoirs (grisé tant que l'énergie < 10).
+
+**Statut :** `terminé`
+
+## Troisième pouvoir — Tsar Bomba (P-25) et Sonar ramené à rayon 3
+
+**Prompt :** « Sur la même branche ajoute un nouveau pouvoir. Ce pouvoir est la tsar bomba. Il
+coûte 40 et n'est utilisable qu'une fois. La bombe provoque une explosion de 5x5. Réduit aussi la
+portée du sonar de 4 à 3. »
+
+**Décision et justification :**
+
+1. **Base commune `AreaBombHandler` plutôt qu'un second handler copié.** Bombe lourde et Tsar
+   Bomba ne diffèrent que par le rayon, le coût et les charges. Le handler abstrait lit son
+   rayon et son nom dans `PowerCatalog` (seule source de vérité) : `HeavyBombHandler` et
+   `TsarBombaHandler` se réduisent à leur `PowerId`. Un troisième pouvoir de zone carrée ne
+   demandera qu'une entrée de catalogue et une classe de 3 lignes.
+2. **Tsar Bomba : 40 d'énergie, `MaxUses = 1`, cooldown 0, pas de charge.** Valeurs imposées
+   par la demande. Le cooldown ne sert à rien puisque le slot passe `Exhausted` après l'unique
+   usage. Mêmes règles que la Bombe lourde : zone tronquée au bord (9 cases en coin), cases déjà
+   visées sautées, touches sans gain d'énergie, tour consommé. Sans gain d'énergie sur les
+   touches, 40 points représentent la majeure partie d'une partie d'économie : la bombe arrive
+   tard, souvent sur une flotte déjà entamée — c'est ce qui l'empêche de « gagner seule »
+   (règle §4.5).
+3. **Loadout par défaut `[Sonar, HeavyBomb, TsarBomba]`.** Toujours faute de sélection de loadout
+   côté front (E-13) ; on reste dans la limite de 3 pouvoirs.
+4. **Sonar : rayon 4 → 3** (`RadiusSquared` 16 → 9, `Radius: 3` au catalogue, doc et client
+   factice alignés). Disque euclidien inchangé.
+5. **Message des bombes basé sur le nom du catalogue** (« Tsar Bomba en secteur E5 : … ») au lieu
+   du libellé fixe « Bombardement » ; exemple openapi mis à jour.
+
+**Scénario de vérification :**
+- `TsarBombaTests` : nominal (25 tirs, porte-avions coulé, énergie 40 → 0, slot `Exhausted`),
+  refus du second usage (`POWER_EXHAUSTED`, énergie et grille intactes), refus à 39 d'énergie,
+  coin (9 cases).
+- `SonarTests` : nouveau test — navire à distance 3 compté, case à distance 4 ignorée.
+- Tests existants de la Bombe lourde conservés sans modification (vérifient le refactoring).
+
+**Résultat observé :** `dotnet test` → 74/74 verts (69 + 5) ; `dotnet format --verify-no-changes`
+propre. Pas de run réel : atteindre 40 d'énergie en partie demande plusieurs dizaines de tours ;
+le chemin service/endpoint est le même que celui de la Bombe lourde, déjà vérifié en réel.
+
+**Statut :** `terminé`
+
 ---
 
 ## Multijoueur en ligne (E-A, E-01 à E-09) : hub SignalR, présence, timer de tour, spectateur
@@ -1147,5 +1251,37 @@ multijoueur (`OnShotResolved`) coexistent sans code mort. `gh` n'étant pas disp
 fermeture de la PR #9 sur GitHub n'a pas été confirmée visuellement dans cette session — à
 vérifier sur la page de la PR (elle devrait apparaître « Merged » puisque le commit poussé sur
 `main` a `multijoueur` comme second parent).
+
+**Statut :** `terminé`
+
+## Merge de `main` (multijoueur) dans `feat/power-bombe`
+
+**Prompt :** « peux tu merge main dans feat/power-bomb et résoudre les conflits pour que ma PR
+puisse passer »
+
+**Décision et justification :**
+
+1. **`ResolveShot` (main) + `EndTurn` (branche) fusionnés, pas juxtaposés.** Les deux branches
+   avaient factorisé la fin de tour chacune de leur côté. `ResolveShot` reste le point d'entrée
+   des tirs (humain, IA, timer) et délègue désormais la fin de partie / le passage de main à
+   `EndTurn`, que les bombes utilisent aussi. `EndTurn` reprend la remise à zéro de
+   `TurnDeadlineUtc` introduite par main : sans elle, une victoire par bombe laisserait un timer
+   de tour actif sur une partie terminée.
+2. **Notifications temps réel des pouvoirs.** Main pousse chaque tir via `GameNotifier` ; la
+   branche n'en savait rien, donc en ligne l'adversaire n'aurait vu ni la bombe ni le changement
+   de tour. Ajout de `GameNotifier.NotifyPowerResultAsync` (PowerResolved + état + GameOver ou
+   TurnChanged), appelé par l'endpoint REST et par `GameHub.UsePower`.
+3. **`GameHub.UsePower` activé.** Main le laissait refuser tout pouvoir « tant qu'E-B n'existe
+   pas » ; les pouvoirs existant désormais, il appelle le même `GameService.UsePowerAsync` que
+   REST (règle « jamais de logique dupliquée entre REST et SignalR »).
+4. **`Battle.razor`.** Main a remplacé `PlayFireResult` par un son déclenché sur `ShotResolved`
+   et gère déjà la navigation vers `/result` dans `OnStoreChanged` : la redirection ajoutée par la
+   branche est retirée, et le son après un pouvoir lit localement la grille avant/après.
+5. **Tests et journal** : les deux côtés conservés intégralement.
+
+**Scénario de vérification :** `dotnet build` (0 avertissement), `dotnet test`,
+`dotnet format --verify-no-changes`, recherche de marqueurs de conflit résiduels.
+
+**Résultat observé :** 96/96 tests verts, 0 avertissement, format propre, aucun marqueur restant.
 
 **Statut :** `terminé`

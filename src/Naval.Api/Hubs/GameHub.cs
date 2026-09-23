@@ -74,12 +74,14 @@ public sealed class GameHub : Hub<IGameClient>
         await _notifier.NotifyShotResultAsync(game, result);
     });
 
-    /// <summary>
-    /// E-B (pouvoirs) n'est pas encore implémenté : aucun joueur n'a de pouvoir équipé, donc ce
-    /// refus est le comportement correct aujourd'hui, pas un stub à compléter en urgence.
-    /// </summary>
-    public Task UsePower(PowerId powerId, PowerTargetDto target) => GuardAsync(() =>
-        throw new GameException(ErrorCodes.PowerNotEquipped, "Les pouvoirs ne sont pas encore disponibles."));
+    /// <summary>Même chemin que POST /api/games/{id}/powers : GameService puis GameNotifier.</summary>
+    public Task UsePower(PowerId powerId, PowerTargetDto target) => GuardAsync(async () =>
+    {
+        var info = RequireConnection();
+        var (result, game) = await _svc.UsePowerAsync(
+            info.GameId, info.Token, new UsePowerRequest(powerId, target), Context.ConnectionAborted);
+        await _notifier.NotifyPowerResultAsync(game, result);
+    });
 
     public Task CancelCharge(PowerId powerId) => GuardAsync(() =>
         throw new GameException(ErrorCodes.PowerNotEquipped, "Les pouvoirs ne sont pas encore disponibles."));

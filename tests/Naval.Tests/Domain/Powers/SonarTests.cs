@@ -31,6 +31,21 @@ public sealed class SonarTests
     }
 
     [Fact]
+    public void Sonar_radius_is_3_so_a_cell_at_distance_4_is_not_counted()
+    {
+        var (caster, target) = BuildPlayers(casterEnergy: 5);
+        // Destroyer vertical (5,8)-(5,9) : (5,8) à distance 3 de (5,5), (5,9) à distance 4.
+        target.Fleet = new Fleet([new Ship("t-destroyer", ShipType.Destroyer, 2,
+            new Coordinate(5, 8), Orientation.Vertical)]);
+        var registry = new PowerRegistry([new SonarHandler()]);
+        var powerTarget = new PowerTargetDto(new CoordinateDto(5, 5), null, null, null, null);
+
+        var (result, _) = GameEngine.ActivatePower(caster, target, PowerId.Sonar, powerTarget, registry);
+
+        result!.Effect.RevealedCount.Should().Be(1);
+    }
+
+    [Fact]
     public void Refusal_when_energy_is_insufficient_leaves_state_untouched()
     {
         var (caster, target) = BuildPlayers(casterEnergy: 1); // coût Sonar = 3

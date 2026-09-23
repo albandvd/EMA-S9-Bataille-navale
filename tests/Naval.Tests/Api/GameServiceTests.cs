@@ -127,6 +127,55 @@ public class GameServiceTests
         thrown.IsConflict.Should().BeFalse(); // 400 : requête malformée, pas un conflit d'état
     }
 
+    [Fact]
+    public async Task UsePowerAsync_heavy_bomb_consumes_the_turn_and_hands_over_to_the_opponent()
+    {
+        var (service, game, token) = await StartBattleWithHeavyBombAsync();
+        game.Player2.Fleet = new Fleet([
+            new Ship("ai-destroyer", ShipType.Destroyer, 2, new Coordinate(0, 0), Orientation.Horizontal),
+            new Ship("ai-cruiser", ShipType.Cruiser, 3, new Coordinate(9, 0), Orientation.Vertical)]);
+
+        var target = new PowerTargetDto(new CoordinateDto(5, 5), null, null, null, null);
+        var (result, after) = await service.UsePowerAsync(game.Id.Value, token,
+            new UsePowerRequest(PowerId.HeavyBomb, target), CancellationToken.None);
+
+        result.Shots.Should().HaveCount(9).And.OnlyContain(s => s.Outcome == ShotOutcome.Miss);
+        result.NextPlayerId.Should().Be(after.Player2.Id.Value);
+        result.GameOver.Should().BeFalse();
+        after.CurrentPlayerId.Should().Be(after.Player2.Id);
+        after.TurnNumber.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task UsePowerAsync_heavy_bomb_that_destroys_the_last_ship_ends_the_game()
+    {
+        var (service, game, token) = await StartBattleWithHeavyBombAsync();
+        game.Player2.Fleet = new Fleet([
+            new Ship("ai-destroyer", ShipType.Destroyer, 2, new Coordinate(4, 5), Orientation.Horizontal)]);
+
+        var target = new PowerTargetDto(new CoordinateDto(5, 5), null, null, null, null);
+        var (result, after) = await service.UsePowerAsync(game.Id.Value, token,
+            new UsePowerRequest(PowerId.HeavyBomb, target), CancellationToken.None);
+
+        result.GameOver.Should().BeTrue();
+        result.WinnerId.Should().Be(after.Player1.Id.Value);
+        result.NextPlayerId.Should().BeNull();
+        after.Status.Should().Be(GameStatus.Finished);
+    }
+
+    private static async Task<(GameService service, Game game, string token)> StartBattleWithHeavyBombAsync()
+    {
+        var service = new GameService(new InMemoryGameStore(),
+            new PowerRegistry([new SonarHandler(), new HeavyBombHandler()]));
+        var createRequest = new CreateGameRequest("Joueur", GameMode.SinglePlayer, 10, 10, "Classic",
+            AiLevel.Random, [PowerId.HeavyBomb], 0, 42);
+        var (game, token) = await service.CreateGameAsync(createRequest, CancellationToken.None);
+        var placements = await service.SuggestRandomFleetAsync(game.Id.Value, token, 42, CancellationToken.None);
+        await service.PlaceFleetAsync(game.Id.Value, token, new PlaceFleetRequest(placements), CancellationToken.None);
+        game.Player1.Energy = 10; // coût de la Bombe lourde
+        return (service, game, token);
+    }
+
     // ─── E-01/E-02 : présence initiale avant qu'un adversaire ne rejoigne ───
 
     [Fact]

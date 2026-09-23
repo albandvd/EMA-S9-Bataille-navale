@@ -321,6 +321,10 @@ paths:
         Pour un pouvoir à effet immédiat, la réponse porte le résultat. Pour un pouvoir à
         charge, elle renvoie `charging: true` avec une charge utile vide ; l'effet arrivera
         plus tard via l'événement `PowerResolved`.
+
+        Un pouvoir offensif qui remplace le tir (ex. `HeavyBomb`) remplit `shots`, consomme
+        le tour : `nextPlayerId` désigne alors l'adversaire, et `gameOver`/`winnerId` sont
+        renseignés si la frappe achève la flotte. En solo, l'IA joue avant la réponse.
       operationId: usePower
       requestBody:
         required: true
@@ -365,6 +369,27 @@ paths:
                     revealedCount: null
                     shots: []
                     message: Chargement engagé. Porteur désigné. 10 tours restants.
+                    nextPlayerId: 8ab71c20-4f5d-4c19-9a02-6d7e8f901234
+                    gameOver: false
+                    winnerId: null
+                heavyBomb:
+                  summary: Bombe lourde — carré 3×3, tronqué ici au coin A1 (4 cases)
+                  value:
+                    gameId: 7f1e4d6c-8b2a-4a91-9e33-2b5c1d7a0f42
+                    turnNumber: 21
+                    powerId: HeavyBomb
+                    charging: false
+                    chargeRemaining: 0
+                    energySpent: 10
+                    energyRemaining: 1
+                    revealedCells: []
+                    revealedCount: null
+                    shots:
+                      - { gameId: 7f1e4d6c-8b2a-4a91-9e33-2b5c1d7a0f42, turnNumber: 21, shooterId: 3c9d2e10-1a2b-4c3d-8e9f-0a1b2c3d4e5f, target: { x: 0, y: 0 }, outcome: Hit, energyGained: 0, nextPlayerId: 8ab71c20-4f5d-4c19-9a02-6d7e8f901234, gameOver: false }
+                      - { gameId: 7f1e4d6c-8b2a-4a91-9e33-2b5c1d7a0f42, turnNumber: 21, shooterId: 3c9d2e10-1a2b-4c3d-8e9f-0a1b2c3d4e5f, target: { x: 1, y: 0 }, outcome: Hit, energyGained: 0, nextPlayerId: 8ab71c20-4f5d-4c19-9a02-6d7e8f901234, gameOver: false }
+                      - { gameId: 7f1e4d6c-8b2a-4a91-9e33-2b5c1d7a0f42, turnNumber: 21, shooterId: 3c9d2e10-1a2b-4c3d-8e9f-0a1b2c3d4e5f, target: { x: 0, y: 1 }, outcome: Miss, energyGained: 0, nextPlayerId: 8ab71c20-4f5d-4c19-9a02-6d7e8f901234, gameOver: false }
+                      - { gameId: 7f1e4d6c-8b2a-4a91-9e33-2b5c1d7a0f42, turnNumber: 21, shooterId: 3c9d2e10-1a2b-4c3d-8e9f-0a1b2c3d4e5f, target: { x: 1, y: 1 }, outcome: Miss, energyGained: 0, nextPlayerId: 8ab71c20-4f5d-4c19-9a02-6d7e8f901234, gameOver: false }
+                    message: 'Bombe lourde en secteur A1 : 2 touche(s), 0 navire(s) coulé(s).'
                     nextPlayerId: 8ab71c20-4f5d-4c19-9a02-6d7e8f901234
                     gameOver: false
                     winnerId: null
@@ -587,6 +612,8 @@ components:
         - OrbitalStrike
         - PiercingMissile
         - NavalMine
+        - HeavyBomb
+        - TsarBomba
         # Défensif
         - Decoy
         - Shield
@@ -644,8 +671,8 @@ components:
           type: array
           maxItems: 3
           description: >-
-            Exactement 3 pouvoirs pour un loadout personnalisé ; une liste vide équipe Sonar
-            par défaut sur les deux joueurs (temporaire, en attendant la sélection de loadout
+            Exactement 3 pouvoirs pour un loadout personnalisé ; une liste vide équipe Sonar,
+            HeavyBomb et TsarBomba par défaut sur les deux joueurs (temporaire, en attendant la sélection de loadout
             complète, E-13).
           items: { $ref: '#/components/schemas/PowerId' }
         turnTimeoutSeconds:

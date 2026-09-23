@@ -61,6 +61,28 @@ public sealed class GameNotifier
         }
     }
 
+    /// <summary>
+    /// Pouvoir résolu (REST ou hub). Diffusé aux deux joueurs, comme un tir : un pouvoir de zone
+    /// doit être annoncé à l'adversaire (docs/02-pouvoirs.md §4.4). Renvoie aussi le tour
+    /// courant : il a changé si le pouvoir a consommé le tour (bombes), et le renvoyer à
+    /// l'identique après un Sonar est sans effet côté client.
+    /// </summary>
+    public async Task NotifyPowerResultAsync(Game game, PowerResultDto result)
+    {
+        await _hub.Clients.Group(GameGroup(game.Id.Value)).PowerResolved(result);
+        await PushGameStateAsync(game.Id.Value);
+
+        if (result.GameOver)
+        {
+            var dto = GameMapper.ToGameOverDto(game, "FleetDestroyed");
+            await _hub.Clients.Group(GameGroup(game.Id.Value)).GameOver(dto);
+        }
+        else
+        {
+            await NotifyTurnChangedAsync(game);
+        }
+    }
+
     public Task NotifyTurnChangedAsync(Game game) =>
         game.CurrentPlayerId is { } currentId
             ? _hub.Clients.Group(GameGroup(game.Id.Value))

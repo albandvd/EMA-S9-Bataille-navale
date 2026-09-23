@@ -9,9 +9,9 @@ public static class PowerCatalog
     [
         // ── Reconnaissance ──
         new(PowerId.Sonar, "Sonar", PowerCategory.Recon,
-            "Révèle le nombre de cases occupées dans un rayon de 4 cases autour d'une cible.",
+            "Révèle le nombre de cases occupées dans un rayon de 3 cases autour d'une cible.",
             EnergyCost: 3, ChargeTurns: 0, Cooldown: 3, MaxUses: -1,
-            TargetKind: TargetKind.Area, Radius: 4, RequiresCarrier: false, IconName: "sonar"),
+            TargetKind: TargetKind.Area, Radius: 3, RequiresCarrier: false, IconName: "sonar"),
 
         new(PowerId.TacticalRadar, "Radar tactique", PowerCategory.Recon,
             "Révèle le contenu de toutes les cases d'une ligne ou d'une colonne.",
@@ -68,6 +68,16 @@ public static class PowerCatalog
             "Ignore le bouclier adverse et touche la case ciblée.",
             EnergyCost: 6, ChargeTurns: 0, Cooldown: 4, MaxUses: -1,
             TargetKind: TargetKind.Cell, Radius: null, RequiresCarrier: false, IconName: "piercing"),
+
+        new(PowerId.HeavyBomb, "Bombe lourde", PowerCategory.Offense,
+            "Pilonne un carré 3×3 centré sur la cible. Remplace le tir du tour ; ses touches ne rapportent pas d'énergie.",
+            EnergyCost: 10, ChargeTurns: 0, Cooldown: 11, MaxUses: -1,
+            TargetKind: TargetKind.Area, Radius: 1, RequiresCarrier: false, IconName: "bomb"),
+
+        new(PowerId.TsarBomba, "Tsar Bomba", PowerCategory.Offense,
+            "Rase un carré 5×5 centré sur la cible. Une seule fois par partie. Remplace le tir du tour ; ses touches ne rapportent pas d'énergie.",
+            EnergyCost: 40, ChargeTurns: 0, Cooldown: 0, MaxUses: 1,
+            TargetKind: TargetKind.Area, Radius: 2, RequiresCarrier: false, IconName: "tsar"),
 
         new(PowerId.NavalMine, "Mine navale", PowerCategory.Offense,
             "Pose une mine sur votre grille ; explose si un navire adverse passe dessus (mode sans IA uniquement).",

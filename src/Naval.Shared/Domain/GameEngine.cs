@@ -117,8 +117,10 @@ public static class GameEngine
         return placements;
     }
 
+    /// <param name="grantEnergy">false pour un tir issu d'un pouvoir (Bombe lourde) : ses touches
+    /// ne rapportent rien, sinon le pouvoir se rembourserait lui-même.</param>
     public static (ShotResult result, string? errorCode) ExecuteShot(
-        PlayerState shooter, PlayerState target, Coordinate coord)
+        PlayerState shooter, PlayerState target, Coordinate coord, bool grantEnergy = true)
     {
         if (!coord.IsWithinBounds(shooter.OutgoingBoard.Width, shooter.OutgoingBoard.Height))
             return (new ShotResult(ShotOutcome.Rejected, null, 0), ErrorCodes.OutOfBounds);
@@ -140,14 +142,12 @@ public static class GameEngine
         shooter.ShotsFired++;
         shooter.Hits++;
 
-        if (ship.IsSunk)
-        {
-            shooter.Energy += 3;
-            return (new ShotResult(ShotOutcome.Sunk, ship, 3), null);
-        }
+        int energyGained = !grantEnergy ? 0 : ship.IsSunk ? 3 : 2;
+        shooter.Energy += energyGained;
 
-        shooter.Energy += 2;
-        return (new ShotResult(ShotOutcome.Hit, null, 2), null);
+        return ship.IsSunk
+            ? (new ShotResult(ShotOutcome.Sunk, ship, energyGained), null)
+            : (new ShotResult(ShotOutcome.Hit, null, energyGained), null);
     }
 
     /// <summary>

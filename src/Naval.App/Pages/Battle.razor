@@ -115,9 +115,32 @@
     private async Task ActivatePowerOn(PowerId powerId, CoordinateDto target)
     {
         _pendingPower = null;
-        Audio.Play("sonar-ping");
+        var before = Store.CurrentGame;
         await Store.UsePowerAsync(powerId, new PowerTargetDto(target, null, null, null, null));
+        var after = Store.CurrentGame;
+
+        // Un pouvoir offensif (bombes) a frappé la grille adverse : même retour sonore qu'un tir.
+        // Sinon, ping de détection. Aucune règle ici, seulement la lecture de l'état. La
+        // navigation vers /result en fin de partie est déjà assurée par OnStoreChanged.
+        if (Store.LastError is not null || before is null || after is null)
+        {
+            Audio.Play(Store.LastError is null ? "sonar-ping" : "deny");
+            return;
+        }
+
+        var (beforeBoard, afterBoard) = (before.Opponent.TargetBoard, after.Opponent.TargetBoard);
+        if (Count(afterBoard, c => c != '.') == Count(beforeBoard, c => c != '.'))
+            Audio.Play("sonar-ping");
+        else if (after.Opponent.SunkShips.Count > before.Opponent.SunkShips.Count)
+            Audio.Play("sunk");
+        else if (Count(afterBoard, c => c is 'x' or '#') > Count(beforeBoard, c => c is 'x' or '#'))
+            Audio.Play("explosion");
+        else
+            Audio.Play("splash");
     }
+
+    private static int Count(BoardViewDto board, Func<char, bool> predicate) =>
+        board.Rows.Sum(row => row.Count(predicate));
 
     /// <summary>
     /// Un seul point d'écoute pour le son de résultat de tir, qu'il vienne de ce joueur ou de
