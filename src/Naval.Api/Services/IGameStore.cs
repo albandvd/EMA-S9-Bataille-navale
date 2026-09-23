@@ -9,5 +9,8 @@ public interface IGameStore
     Task<IReadOnlyList<GameSummary>> ListOpenAsync(CancellationToken ct = default);
     Task<Game?> FindByJoinCodeAsync(string code, CancellationToken ct = default);
     Task RemoveAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Parties en bataille, pour le scan périodique du timer de tour (E-07).</summary>
+    Task<IReadOnlyList<Game>> ListInProgressAsync(CancellationToken ct = default);
     int ActiveCount { get; }
 }

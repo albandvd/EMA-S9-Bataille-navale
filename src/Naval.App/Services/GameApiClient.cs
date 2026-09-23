@@ -42,6 +42,9 @@ public sealed class GameApiClient(HttpClient http) : IGameApiClient
     public Task<IReadOnlyList<PowerDefinitionDto>> GetPowerCatalogAsync(CancellationToken ct) =>
         SendAsync<IReadOnlyList<PowerDefinitionDto>>(HttpMethod.Get, "api/catalog/powers", null, null, ct);
 
+    public Task<SpectatorViewDto> GetSpectatorViewAsync(Guid gameId, CancellationToken ct) =>
+        SendAsync<SpectatorViewDto>(HttpMethod.Get, $"api/games/{gameId}/spectate", null, null, ct);
+
     public async Task<FleetPresetDto> GetFleetPresetAsync(string presetName, CancellationToken ct)
     {
         var presets = await SendAsync<IReadOnlyList<FleetPresetDto>>(HttpMethod.Get, "api/catalog/fleets", null, null, ct);

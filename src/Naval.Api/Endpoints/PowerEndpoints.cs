@@ -18,16 +18,19 @@ public static class PowerEndpoints
         HttpContext ctx,
         GameService svc,
         AiTurnService aiSvc,
+        GameNotifier notifier,
         CancellationToken ct)
     {
         var token = PlayerTokenAccessor.GetToken(ctx);
         if (token is null) return NavalProblemDetails.Unauthorized("En-tête X-Player-Token absent.");
 
         var (result, game) = await svc.UsePowerAsync(gameId, token, req, ct);
+        await notifier.NotifyPowerResultAsync(game, result);
 
-        // Un pouvoir qui consomme le tour (Bombe lourde) passe la main : en solo, l'IA joue.
-        if (game.Mode == GameMode.SinglePlayer && game.Status == GameStatus.InProgress)
-            await aiSvc.PlayAsync(gameId, ct);
+        // Un pouvoir qui consomme le tour (bombes) passe la main : en solo, l'IA joue.
+        if (game.Mode == GameMode.SinglePlayer && game.Status == GameStatus.InProgress
+            && await aiSvc.PlayAsync(gameId, ct) is { } ai)
+            await notifier.NotifyShotResultAsync(ai.game, ai.result);
 
         return Results.Ok(result);
     }

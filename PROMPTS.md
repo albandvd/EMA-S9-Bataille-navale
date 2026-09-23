@@ -1040,3 +1040,248 @@ propre. Pas de run réel : atteindre 40 d'énergie en partie demande plusieurs d
 le chemin service/endpoint est le même que celui de la Bombe lourde, déjà vérifié en réel.
 
 **Statut :** `terminé`
+
+---
+
+## Multijoueur en ligne (E-A, E-01 à E-09) : hub SignalR, présence, timer de tour, spectateur
+
+**Prompt :** « en te basant sur le fichier docs/01-fonctionnalites.md met en place le E-A
+Multijoueur en ligne »
+
+**Décision et justification :**
+
+État de départ : E-01 (code de partie), E-02 (rejoindre par code) et E-03 (salon public)
+existaient déjà côté REST dans `GameService`/`GameEndpoints`, mais sans aucune notification
+temps réel, sans présence, sans timer, sans spectateur, et sans aucun front au-delà du solo.
+Périmètre traité ici : E-04 à E-09 côté backend et front, plus deux bugs réels découverts dans
+le socle existant en cours de route (détaillés plus bas).
+
+1. **Un seul point de diffusion (`GameNotifier`), jamais dans `GameService`.** Conformément au
+   CLAUDE.md (« les endpoints et le hub appellent le même `GameService` »), `GameService` reste
+   entièrement ignorant de SignalR : il retourne des DTO, un point. `GameNotifier` (nouveau,
+   `Naval.Api/Services`) encapsule `IHubContext<GameHub, IGameClient>` et sait pousser un tir
+   résolu, un changement de tour, une fin de partie, une emote ou l'état complet filtré par
+   joueur. Les endpoints REST (`FleetEndpoints`, `ShotEndpoints`, `GameEndpoints`) et
+   `GameHub` l'appellent tous les deux après une mutation réussie — la logique de jeu ne vit
+   qu'à un endroit, la diffusion en temps réel est appelée à deux endroits mais n'existe qu'à
+   un seul. Ça permet aussi qu'un tir soumis en REST (compatibilité, tests, repli réseau)
+   déclenche la même notification temps réel qu'un tir soumis via le hub.
+
+2. **Groupes SignalR à deux niveaux.** `game:{gameId}` pour tout ce qui est symétrique (aucune
+   information cachée : tir résolu, changement de tour, fin de partie, emote — un navire coulé
+   est par définition déjà révélé aux deux joueurs). `player:{playerId}` pour
+   `GameStateChanged`, seule notification asymétrique (vue Self/Opponent filtrée). Un
+   spectateur n'a volontairement aucun groupe : E-09 reste un simple polling REST
+   (`GET /api/games/{id}/spectate` toutes les 2,5 s côté front), ce qui suffit au critère
+   d'acceptation documenté et évite d'étendre la surface du hub pour un besoin en lecture
+   seule.
+
+3. **Présence et grâce de déconnexion en singleton + `IServiceScopeFactory`.**
+   `PresenceService` (singleton, il doit survivre à une seule invocation de hub) associe
+   `connectionId → (gameId, playerId, token)`. À la déconnexion, il démarre un délai de 60 s
+   (`Task.Delay` annulable) puis, s'il n'a pas été annulé par une reconnexion entretemps,
+   résout `GameService`/`GameNotifier` dans une **nouvelle** portée DI
+   (`IServiceScopeFactory.CreateScope()`) avant d'appeler
+   `AbandonDueToDisconnectionAsync`. Nécessaire parce que `GameService` est `Scoped` : le
+   capturer directement depuis un singleton pour un usage différé (après la fin de
+   l'invocation de hub qui a créé la portée d'origine) serait un bug de durée de vie classique.
+   Même schéma dans `TurnTimeoutService` (E-07), qui scrute `IGameStore.ListInProgressAsync`
+   chaque seconde.
+
+4. **Timer de tour : réutilisation de `RandomAi`, pas une nouvelle règle.** E-07 dit « tir
+   aléatoire automatique » à l'expiration — c'est exactement l'algorithme de S-11
+   (`RandomAi.ChooseTarget`), déjà testé, déjà pur. `GameService.PlayTimeoutShotAsync`
+   l'invoque sur le joueur courant et partage la résolution de tir
+   (`ResolveShot`, factorisée depuis `FireAsync`/`PlayAiTurnAsync` dans ce même changement)
+   pour ne pas tripler la logique d'avancement de tour / fin de partie. Garde-fou explicite et
+   testé : ne jamais jouer à la place de l'IA, dont le tour se résout de façon synchrone dans
+   `AiTurnService` bien avant qu'un délai humain ne puisse expirer.
+
+5. **Vue spectateur réutilise `Board.BuildTargetView`, ne duplique aucune règle de visibilité.**
+   `SpectatorPlayerViewDto` d'un joueur = `adversaire.OutgoingBoard.BuildTargetView(joueur.Fleet)`
+   — exactement le calcul déjà fait pour la vue adverse d'un vrai joueur, appliqué à un
+   troisième spectateur. Aucun navire non coulé n'est donc jamais exposé, y compris à un
+   spectateur, par construction du DTO plutôt que par une règle ad hoc.
+
+6. **Front : session persistée en `localStorage` via `IJSRuntime` uniquement (pas de fichier
+   .js), dans l'esprit du choix déjà pris pour l'audio.** `LocalStorageService` appelle
+   `localStorage.getItem/setItem/removeItem` par leur chemin global via `IJSRuntime`, sans
+   ajouter de script custom. `GameStateStore` gagne deux dépendances optionnelles
+   (`IGameHubClient? hub = null, LocalStorageService? storage = null`) pour que les trois tests
+   existants (`new GameStateStore(new FakeGameApiClient())`) continuent de compiler et de
+   passer sans modification — un `NullGameHubClient` inerte comble l'absence de hub. Un
+   `FakeGameHubClient` (test double, événements déclenchables manuellement) permet de tester le
+   câblage complet des événements poussés (GameStateChanged, ShotResolved, OpponentLeft/
+   Reconnected, ActionRejected, emotes) sans serveur réel.
+
+**Bugs réels découverts et corrigés en cours de route (hors périmètre initial mais bloquants
+pour E-A) :**
+
+- **`GameStateDto` n'exposait pas le preset de flotte.** Le joueur qui crée la partie connaît
+  déjà son preset (choisi en Lobby) ; celui qui rejoint par code ou depuis le salon public
+  n'avait aucun moyen de savoir quels navires placer à l'écran de déploiement. Corrigé en
+  ajoutant `FleetPreset` à `GameStateDto` (Contracts + `GameMapper` + `openapi.yaml` +
+  `FakeGameApiClient`, dans le même changement comme l'exige le CLAUDE.md) plutôt que de coder
+  un preset par défaut en dur côté front.
+- **`Player2` placeholder marqué `IsConnected = true` avant qu'aucun adversaire n'existe.** Le
+  constructeur de `PlayerState` met `IsConnected = !isAi` par défaut ; pour l'emplacement
+  encore vide d'une partie en ligne fraîchement créée, ça produisait un mensonge de présence
+  dès la création. Corrigé par une initialisation explicite à `false` dans
+  `GameService.CreateGameAsync`, avec un test de régression dédié.
+- **`GameNotifier.NotifyGameOverAsync` ne poussait pas l'état complet.** Un abandon ou une
+  déconnexion ne transitent jamais par `NotifyShotResultAsync` (pas de tir) : sans pousser
+  `GameStateChanged` en plus de `GameOver`, le `Status`/`WinnerId` que les pages lisent pour
+  naviguer vers `/result` ne changeait jamais côté client pour ces deux causes de fin de
+  partie. Corrigé en chaînant `PushGameStateAsync` après la diffusion de `GameOver`.
+
+**Scénario de vérification :**
+1. `dotnet build` (solution complète) → 0 avertissement, 0 erreur.
+2. `dotnet test` → 69/69 verts, dont 22 nouveaux tests : 11 dans `GameServiceTests` (timer de
+   tour avant/après échéance, garde-fou IA, présence, abandon par déconnexion avec/sans
+   reconnexion entretemps, vue spectateur sans fuite puis avec un tir reflété), 3 dans
+   `GameHubTests` (nouveau, `WebApplicationFactory` + `HubConnection` réels — pas seulement
+   `GameService` en direct : un tir soumis par le hub de l'hôte est bien reçu par le hub de
+   l'invité avec `ShotResolved` + `TurnChanged`, une emote traverse pareillement, et un `Fire`
+   avant tout `JoinGame` est rejeté proprement via `ActionRejected` plutôt que de faire planter
+   la connexion), 8 dans `GameStateStoreTests` (connexion du hub selon le mode, réaction à
+   chaque événement poussé, `ShotResolved` déclenché aussi bien par un tir local que distant).
+3. Bout en bout contre un vrai serveur démarré (`dotnet run --project src/Naval.Api`, pas
+   `WebApplicationFactory`) : partie privée créée, rejointe par code, les deux flottes
+   déployées → `GET /api/games/{id}` confirme `fleetPreset` renseigné et `turnDeadlineUtc`
+   calculé. Après expiration du timer (5 s configurés pour le test), rejeu de la requête :
+   le journal d'événements montre deux tirs `(temps écoulé)` enchaînés, un par joueur, sans
+   aucune action manuelle — preuve que `TurnTimeoutService` tourne réellement en tâche de fond
+   et pas seulement dans un test simulé. `GET /api/games/{id}/spectate` avant déploiement :
+   les deux grilles sont entièrement à `.`, confirmant l'absence de fuite dès la création.
+4. Vérification visuelle dans un navigateur non disponible dans cet environnement (extension
+   Chrome non connectée) : le nouveau parcours front (sélecteur de mode en Lobby, écran
+   d'attente avec code, rejoindre par code, salon public, timer/présence/emotes en bataille,
+   page spectateur) compile (`dotnet build src/Naval.App` → 0 avertissement) et s'appuie sur
+   les mêmes chemins `GameStateStore` couverts par les tests ci-dessus, mais le clic-glisser
+   réel à travers les nouveaux écrans reste à confirmer manuellement par l'utilisateur.
+
+**Résultat observé :** Build et tests verts (69/69), aucune régression sur le socle solo
+existant. E-04 à E-09 fonctionnels et vérifiés contre un vrai serveur (hub temps réel, timer de
+tour observé en action, présence, vue spectateur). E-01/E-02/E-03 restaient déjà acquis mais
+gagnent ici leur notification temps réel (`OpponentJoined`) et un vrai front (mode, écran
+d'attente, rejoindre par code, salon public). Point restant, signalé plutôt que masqué : aucune
+confirmation visuelle humaine du nouveau parcours front n'a pu être faite dans cet
+environnement — à valider en lançant `dotnet run --project src/Naval.Api` et
+`dotnet run --project src/Naval.App`, puis en jouant une partie privée à deux onglets.
+
+---
+
+## Merge de la PR #9 (multijoueur → main) et résolution des conflits
+
+**Prompt :** « merge la pull request feat(E-A): multijoueur en ligne — hub SignalR, présence,
+timer de tour, spectateur… #9 et merge les conflicts »
+
+**Décision et justification :**
+
+`gh` n'étant pas installé dans l'environnement, le merge a été fait par `git` en ligne de
+commande : simulation dans un worktree jetable (`git worktree add … origin/main` puis
+`git merge origin/multijoueur --no-commit --no-ff`) pour isoler l'opération du reste du dépôt,
+résolution des 6 fichiers en conflit, `dotnet build`/`dotnet test` avant tout commit, puis
+`git push origin HEAD:main` — un commit de merge à deux parents (`origin/main` et
+`origin/multijoueur`) poussé directement sur `main` ferme la PR #9 côté GitHub sans passer par
+le bouton « Merge ».
+
+Les conflits venaient tous de la même cause : `multijoueur` avait divergé de `main` avant le
+merge de la PR #8 (premier pouvoir, Sonar) — les deux branches avaient donc étendu les mêmes
+zones (constructeur `GameService`, `Program.cs`, `GameStateDto`, `Battle.razor`,
+`GameServiceTests`) de façon indépendante et non chevauchante. Résolution retenue par fichier :
+
+1. **`PROMPTS.md`.** Journal en écriture additive uniquement : les deux jeux d'entrées sont
+   conservés à la suite, aucune perte de contenu des deux côtés.
+2. **`Program.cs`.** `using Naval.Shared.Domain.Powers` (Sonar) et
+   `using Naval.Shared.Contracts` (multijoueur) sont deux ajouts indépendants ; même chose pour
+   les enregistrements DI (`IPowerHandler`/`PowerRegistry` d'un côté, `GameNotifier`/
+   `PresenceService`/`TurnTimeoutService`/`AddSignalR()` de l'autre) — combinés sans arbitrage,
+   aucun des deux ne remplaçait l'autre.
+3. **`GameService.cs`, deux conflits.** (a) Le `PlayerState` placeholder du joueur 2 doit à la
+   fois recevoir `equippedPowers` (Sonar, pour que la partie en ligne équipe aussi un loadout
+   par défaut) et être créé avec `IsConnected = false` (E-05, sinon la présence mentirait avant
+   qu'un adversaire ne rejoigne) — combinaison des deux, pas un choix entre elles. (b)
+   `GrantTurnStartBenefits` (E-10/E-14 : énergie + cooldowns au tour) et `ComputeTurnDeadline`
+   (E-07 : calcul de la deadline du timer) sont deux méthodes privées indépendantes, toutes
+   deux nécessaires (la seconde est déjà appelée plus haut dans `StartBattle`/`AdvanceTurn`) :
+   gardées l'une et l'autre.
+4. **`Battle.razor`, seul conflit avec un vrai arbitrage.** `main` (Sonar) avait ajouté un flux
+   de ciblage à deux temps : `HandlePower` arme `_pendingPower`, puis `HandleFire` vérifie
+   `_pendingPower` et route vers `ActivatePowerOn(powerId, target)` avec la case cliquée comme
+   cible — nécessaire pour un pouvoir `TargetKind.Area` comme Sonar. `multijoueur` avait divergé
+   *avant* ce flux et gardait l'ancien `HandleFire` qui calculait le son (tir manqué/touché/
+   coulé) en comparant l'état du jeu avant/après (`CountHits`, `var before = Store.CurrentGame`).
+   Ce diffing local est remplacé, côté `multijoueur`, par `OnShotResolved` : un handler abonné à
+   `Store.ShotResolved`, déclenché par le serveur (poussé en temps réel par le hub) aussi bien
+   pour un tir du joueur local que pour un tir adverse — le diffing avant/après ne pouvait de
+   toute façon pas couvrir les tirs distants. Choix : **garder le flux de ciblage `_pendingPower`
+   de Sonar** (fonctionnalité plus récente, testée, seule façon de cibler un pouvoir à zone) **et
+   remplacer le diffing avant/après par `OnShotResolved`** (correct aussi en multijoueur, où un
+   tir peut venir de l'adversaire) — suppression de `CountHits` et de la variable `before`,
+   devenus du code mort une fois `OnShotResolved` en place.
+5. **`Responses.cs`.** `GameStateDto` gagne le champ `FleetPreset` (ajouté par `multijoueur` pour
+   que le joueur qui rejoint par code sache quels navires placer) — ajout pur, aucun champ
+   retiré côté Sonar. `GameMapper.cs` et `contracts/openapi.yaml` documentaient déjà ce champ
+   sans conflit (auto-mergés), donc pas de divergence Shared/Contrats à corriger.
+6. **`GameServiceTests.cs`.** Concaténation des deux jeux de tests (aucun ne remplace l'autre),
+   puis correction mécanique : les tests écrits avant l'introduction de `PowerRegistry`
+   (branche `multijoueur`) appelaient encore `new GameService(store)` à un seul argument ; le
+   constructeur fusionné exige `GameService(IGameStore, PowerRegistry)`. Les 4 appels concernés
+   ont reçu `new PowerRegistry([new SonarHandler()])` en second argument, par cohérence avec les
+   tests déjà écrits côté Sonar — pas une nouvelle règle de test, juste un ajustement de
+   compilation après fusion.
+
+**Scénario de vérification :**
+- `dotnet build` dans le worktree de fusion, avant tout commit : 0 avertissement, 0 erreur.
+- `dotnet test` : 83/83 verts (61 déjà acquis avant la divergence + 22 apportés par la branche
+  `multijoueur`, aucune perte, aucune régression).
+- `dotnet format` relancé après résolution : aucun fichier touché (la mise en forme des DTO
+  fusionnés — `GameStateDto` notamment — était déjà conforme).
+- `grep -rl` de `<<<<<<<`/`=======`/`>>>>>>>` sur tout le dépôt après résolution : aucune
+  occurrence restante.
+- Relecture manuelle de `contracts/openapi.yaml` (`fleetPreset` dans `GameStateDto`) pour
+  confirmer qu'il n'y avait pas de divergence Contrats/YAML à corriger en plus du conflit `.cs`.
+- `git log -1 --format=%P` sur le commit de merge : deux parents confirmés
+  (`806289e…`, tip de `main`, et `2465f0d…`, tip de `multijoueur`) avant le `git push`.
+
+**Résultat observé :** Merge poussé sur `main` (`806289e..2dcf751`). Build et tests verts
+(83/83). Le flux de ciblage des pouvoirs à zone (Sonar) et le son de tir événementiel
+multijoueur (`OnShotResolved`) coexistent sans code mort. `gh` n'étant pas disponible, la
+fermeture de la PR #9 sur GitHub n'a pas été confirmée visuellement dans cette session — à
+vérifier sur la page de la PR (elle devrait apparaître « Merged » puisque le commit poussé sur
+`main` a `multijoueur` comme second parent).
+
+**Statut :** `terminé`
+
+## Merge de `main` (multijoueur) dans `feat/power-bombe`
+
+**Prompt :** « peux tu merge main dans feat/power-bomb et résoudre les conflits pour que ma PR
+puisse passer »
+
+**Décision et justification :**
+
+1. **`ResolveShot` (main) + `EndTurn` (branche) fusionnés, pas juxtaposés.** Les deux branches
+   avaient factorisé la fin de tour chacune de leur côté. `ResolveShot` reste le point d'entrée
+   des tirs (humain, IA, timer) et délègue désormais la fin de partie / le passage de main à
+   `EndTurn`, que les bombes utilisent aussi. `EndTurn` reprend la remise à zéro de
+   `TurnDeadlineUtc` introduite par main : sans elle, une victoire par bombe laisserait un timer
+   de tour actif sur une partie terminée.
+2. **Notifications temps réel des pouvoirs.** Main pousse chaque tir via `GameNotifier` ; la
+   branche n'en savait rien, donc en ligne l'adversaire n'aurait vu ni la bombe ni le changement
+   de tour. Ajout de `GameNotifier.NotifyPowerResultAsync` (PowerResolved + état + GameOver ou
+   TurnChanged), appelé par l'endpoint REST et par `GameHub.UsePower`.
+3. **`GameHub.UsePower` activé.** Main le laissait refuser tout pouvoir « tant qu'E-B n'existe
+   pas » ; les pouvoirs existant désormais, il appelle le même `GameService.UsePowerAsync` que
+   REST (règle « jamais de logique dupliquée entre REST et SignalR »).
+4. **`Battle.razor`.** Main a remplacé `PlayFireResult` par un son déclenché sur `ShotResolved`
+   et gère déjà la navigation vers `/result` dans `OnStoreChanged` : la redirection ajoutée par la
+   branche est retirée, et le son après un pouvoir lit localement la grille avant/après.
+5. **Tests et journal** : les deux côtés conservés intégralement.
+
+**Scénario de vérification :** `dotnet build` (0 avertissement), `dotnet test`,
+`dotnet format --verify-no-changes`, recherche de marqueurs de conflit résiduels.
+
+**Résultat observé :** 96/96 tests verts, 0 avertissement, format propre, aucun marqueur restant.
+
+**Statut :** `terminé`

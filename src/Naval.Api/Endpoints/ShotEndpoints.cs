@@ -20,32 +20,40 @@ public static class ShotEndpoints
         HttpContext ctx,
         GameService svc,
         AiTurnService aiSvc,
+        GameNotifier notifier,
         CancellationToken ct)
     {
         var token = PlayerTokenAccessor.GetToken(ctx);
         if (token is null) return NavalProblemDetails.Unauthorized("En-tête X-Player-Token absent.");
 
         var (result, game) = await svc.FireAsync(gameId, token, req, ct);
+        await notifier.NotifyShotResultAsync(game, result);
 
         // En mode solo, joue le tour IA immédiatement après
         if (game.Mode == Naval.Shared.Contracts.GameMode.SinglePlayer &&
             game.Status == Naval.Shared.Contracts.GameStatus.InProgress)
         {
-            await aiSvc.PlayAsync(gameId, ct);
+            var aiOutcome = await aiSvc.PlayAsync(gameId, ct);
+            if (aiOutcome is { } outcome)
+                await notifier.NotifyShotResultAsync(outcome.game, outcome.result);
         }
 
         return Results.Ok(result);
     }
 
-    private static IResult SendEmote(
+    private static async Task<IResult> SendEmote(
         Guid gameId,
         SendEmoteRequest req,
-        HttpContext ctx)
+        HttpContext ctx,
+        GameService svc,
+        GameNotifier notifier,
+        CancellationToken ct)
     {
-        // Emotes sans SignalR : accepté sans effet (front utilise le hub en mode online)
         var token = PlayerTokenAccessor.GetToken(ctx);
         if (token is null) return NavalProblemDetails.Unauthorized("En-tête X-Player-Token absent.");
 
+        var (_, player) = await svc.ResolvePlayerAsync(gameId, token, ct);
+        await notifier.NotifyEmoteAsync(gameId, player.Id.Value, req.Code);
         return Results.NoContent();
     }
 }

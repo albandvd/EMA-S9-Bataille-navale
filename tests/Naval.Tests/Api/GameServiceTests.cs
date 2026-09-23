@@ -175,4 +175,197 @@ public class GameServiceTests
         game.Player1.Energy = 10; // coût de la Bombe lourde
         return (service, game, token);
     }
+
+    // ─── E-01/E-02 : présence initiale avant qu'un adversaire ne rejoigne ───
+
+    [Fact]
+    public async Task CreateGameAsync_leaves_the_placeholder_opponent_disconnected_in_online_modes()
+    {
+        var service = new GameService(new InMemoryGameStore(), new PowerRegistry([new SonarHandler()]));
+        var request = new CreateGameRequest("Hôte", GameMode.PrivateOnline, 10, 10, "Classic",
+            null, [], 0, null);
+
+        var (game, _) = await service.CreateGameAsync(request, CancellationToken.None);
+
+        game.Player2.IsConnected.Should().BeFalse();
+    }
+
+    // ─── E-07 : timer de tour ───
+
+    private static async Task<(GameService service, IGameStore store, Guid gameId)> CreateInProgressSinglePlayerGameAsync(
+        int turnTimeoutSeconds)
+    {
+        var store = new InMemoryGameStore();
+        var service = new GameService(store, new PowerRegistry([new SonarHandler()]));
+        var createRequest = new CreateGameRequest("Joueur", GameMode.SinglePlayer, 10, 10, "Classic",
+            AiLevel.Random, [], turnTimeoutSeconds, null);
+        var (createdGame, token) = await service.CreateGameAsync(createRequest, CancellationToken.None);
+
+        var placements = await service.SuggestRandomFleetAsync(createdGame.Id.Value, token, 7, CancellationToken.None);
+        await service.PlaceFleetAsync(createdGame.Id.Value, token, new PlaceFleetRequest(placements), CancellationToken.None);
+
+        return (service, store, createdGame.Id.Value);
+    }
+
+    private static async Task ExpireCurrentTurnAsync(IGameStore store, Guid gameId)
+    {
+        var game = await store.GetAsync(gameId, CancellationToken.None);
+        game!.TurnDeadlineUtc = DateTimeOffset.UtcNow.AddSeconds(-1);
+        await store.SaveAsync(game, CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task PlaceFleetAsync_sets_a_turn_deadline_when_a_timeout_is_configured()
+    {
+        var (_, store, gameId) = await CreateInProgressSinglePlayerGameAsync(turnTimeoutSeconds: 30);
+
+        var game = await store.GetAsync(gameId, CancellationToken.None);
+
+        game!.TurnDeadlineUtc.Should().NotBeNull();
+        game.TurnDeadlineUtc.Should().BeCloseTo(DateTimeOffset.UtcNow.AddSeconds(30), TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task PlaceFleetAsync_leaves_the_turn_deadline_null_when_the_timeout_is_disabled()
+    {
+        var (_, store, gameId) = await CreateInProgressSinglePlayerGameAsync(turnTimeoutSeconds: 0);
+
+        var game = await store.GetAsync(gameId, CancellationToken.None);
+
+        game!.TurnDeadlineUtc.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task PlayTimeoutShotAsync_does_nothing_before_the_deadline()
+    {
+        var (service, _, gameId) = await CreateInProgressSinglePlayerGameAsync(turnTimeoutSeconds: 30);
+
+        var result = await service.PlayTimeoutShotAsync(gameId, CancellationToken.None);
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task PlayTimeoutShotAsync_fires_a_random_shot_once_the_deadline_has_passed()
+    {
+        var (service, store, gameId) = await CreateInProgressSinglePlayerGameAsync(turnTimeoutSeconds: 30);
+        await ExpireCurrentTurnAsync(store, gameId);
+
+        var result = await service.PlayTimeoutShotAsync(gameId, CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.Outcome.Should().NotBe(ShotOutcome.Rejected);
+    }
+
+    [Fact]
+    public async Task PlayTimeoutShotAsync_never_fires_on_the_ai_s_behalf()
+    {
+        // En solo, le tour de l'IA se résout de façon synchrone : sa deadline ne devrait
+        // jamais être scrutée par le timer, mais on vérifie le garde-fou explicitement.
+        var (service, store, gameId) = await CreateInProgressSinglePlayerGameAsync(turnTimeoutSeconds: 30);
+        await ExpireCurrentTurnAsync(store, gameId);
+        await service.PlayTimeoutShotAsync(gameId, CancellationToken.None); // tour du joueur humain écoulé
+        await ExpireCurrentTurnAsync(store, gameId); // le tour est maintenant à l'IA
+
+        var result = await service.PlayTimeoutShotAsync(gameId, CancellationToken.None);
+
+        result.Should().BeNull();
+    }
+
+    // ─── E-05 : présence & déconnexion ───
+
+    private static async Task<(GameService service, Guid gameId, Guid hostId, Guid guestId)> CreateOnlineBattleAsync()
+    {
+        var service = new GameService(new InMemoryGameStore(), new PowerRegistry([new SonarHandler()]));
+        var createRequest = new CreateGameRequest("Hôte", GameMode.PrivateOnline, 8, 8, "Skirmish",
+            null, [], 0, null);
+        var (created, hostToken) = await service.CreateGameAsync(createRequest, CancellationToken.None);
+
+        var joinRequest = new JoinGameRequest("Invité", created.JoinCode, null, []);
+        var (joined, guestToken) = await service.JoinGameAsync(joinRequest, CancellationToken.None);
+
+        var hostPlacements = await service.SuggestRandomFleetAsync(joined.Id.Value, hostToken, 1, CancellationToken.None);
+        await service.PlaceFleetAsync(joined.Id.Value, hostToken, new PlaceFleetRequest(hostPlacements), CancellationToken.None);
+        var guestPlacements = await service.SuggestRandomFleetAsync(joined.Id.Value, guestToken, 2, CancellationToken.None);
+        var final = await service.PlaceFleetAsync(joined.Id.Value, guestToken, new PlaceFleetRequest(guestPlacements), CancellationToken.None);
+
+        return (service, final.Id.Value, final.Player1.Id.Value, final.Player2.Id.Value);
+    }
+
+    [Fact]
+    public async Task SetPresenceAsync_toggles_connection_state()
+    {
+        var (service, gameId, hostId, _) = await CreateOnlineBattleAsync();
+
+        await service.SetPresenceAsync(gameId, hostId, connected: false, CancellationToken.None);
+        var view = await service.GetSpectatorViewAsync(gameId, CancellationToken.None);
+        view.Player1.IsConnected.Should().BeFalse();
+
+        await service.SetPresenceAsync(gameId, hostId, connected: true, CancellationToken.None);
+        view = await service.GetSpectatorViewAsync(gameId, CancellationToken.None);
+        view.Player1.IsConnected.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AbandonDueToDisconnectionAsync_ends_the_game_when_the_player_is_still_disconnected()
+    {
+        var (service, gameId, hostId, guestId) = await CreateOnlineBattleAsync();
+        await service.SetPresenceAsync(gameId, hostId, connected: false, CancellationToken.None);
+
+        var result = await service.AbandonDueToDisconnectionAsync(gameId, hostId, CancellationToken.None);
+
+        result.Should().NotBeNull();
+        result!.WinnerId.Should().Be(guestId);
+        result.Reason.Should().Be("Disconnected");
+    }
+
+    [Fact]
+    public async Task AbandonDueToDisconnectionAsync_does_nothing_once_the_player_has_reconnected()
+    {
+        var (service, gameId, hostId, _) = await CreateOnlineBattleAsync();
+        await service.SetPresenceAsync(gameId, hostId, connected: false, CancellationToken.None);
+        await service.SetPresenceAsync(gameId, hostId, connected: true, CancellationToken.None); // reconnexion avant l'échéance
+
+        var result = await service.AbandonDueToDisconnectionAsync(gameId, hostId, CancellationToken.None);
+
+        result.Should().BeNull();
+        var view = await service.GetSpectatorViewAsync(gameId, CancellationToken.None);
+        view.Status.Should().Be(GameStatus.InProgress);
+    }
+
+    // ─── E-09 : spectateur ───
+
+    [Fact]
+    public async Task GetSpectatorViewAsync_never_reveals_an_undiscovered_ship()
+    {
+        var (service, gameId, _, guestId) = await CreateOnlineBattleAsync();
+
+        var view = await service.GetSpectatorViewAsync(gameId, CancellationToken.None);
+
+        view.Player1.Board.Rows.Should().OnlyContain(row => row.All(c => c == '.'));
+        view.Player2.Board.Rows.Should().OnlyContain(row => row.All(c => c == '.'));
+        view.Player1.SunkShips.Should().BeEmpty();
+        view.Player2.SunkShips.Should().BeEmpty();
+        view.CurrentPlayerId.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task GetSpectatorViewAsync_reflects_a_shot_once_it_has_been_fired()
+    {
+        var service = new GameService(new InMemoryGameStore(), new PowerRegistry([new SonarHandler()]));
+        var createRequest = new CreateGameRequest("Joueur", GameMode.SinglePlayer, 5, 5, "Skirmish",
+            AiLevel.Random, [], 0, null);
+        var (created, token) = await service.CreateGameAsync(createRequest, CancellationToken.None);
+        var placements = await service.SuggestRandomFleetAsync(created.Id.Value, token, 9, CancellationToken.None);
+        await service.PlaceFleetAsync(created.Id.Value, token, new PlaceFleetRequest(placements), CancellationToken.None);
+
+        var (shotResult, _) = await service.FireAsync(created.Id.Value, token, new FireRequest(new CoordinateDto(0, 0)), CancellationToken.None);
+
+        var view = await service.GetSpectatorViewAsync(created.Id.Value, CancellationToken.None);
+        var opponentBoard = view.Player2.Board.Rows;
+        var markedCells = opponentBoard.Sum(row => row.Count(c => c != '.'));
+
+        markedCells.Should().Be(1);
+        shotResult.Outcome.Should().NotBe(ShotOutcome.Rejected);
+    }
 }

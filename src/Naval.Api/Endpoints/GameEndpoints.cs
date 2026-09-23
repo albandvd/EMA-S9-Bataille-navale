@@ -16,6 +16,7 @@ public static class GameEndpoints
         group.MapGet("/{gameId:guid}", GetGame);
         group.MapPost("/{gameId:guid}/forfeit", Forfeit);
         group.MapGet("/{gameId:guid}/events", GetEvents);
+        group.MapGet("/{gameId:guid}/spectate", Spectate).AllowAnonymous();
     }
 
     private static async Task<IResult> CreateGame(
@@ -31,9 +32,11 @@ public static class GameEndpoints
     private static async Task<IResult> JoinGame(
         JoinGameRequest req,
         GameService svc,
+        GameNotifier notifier,
         CancellationToken ct)
     {
         var (game, token) = await svc.JoinGameAsync(req, ct);
+        await notifier.NotifyOpponentJoinedAsync(game.Id.Value, game.Player1.Id.Value, game.Player2.Name);
         return Results.Ok(new JoinGameResponse(
             game.Id.Value, token, game.Status, game.Player1.Name));
     }
@@ -64,12 +67,14 @@ public static class GameEndpoints
         Guid gameId,
         HttpContext ctx,
         GameService svc,
+        GameNotifier notifier,
         CancellationToken ct)
     {
         var token = PlayerTokenAccessor.GetToken(ctx);
         if (token is null) return NavalProblemDetails.Unauthorized("En-tête X-Player-Token absent.");
 
         var result = await svc.ForfeitAsync(gameId, token, ct);
+        await notifier.NotifyGameOverAsync(gameId, result);
         return Results.Ok(result);
     }
 
@@ -85,5 +90,14 @@ public static class GameEndpoints
 
         var events = await svc.GetEventsAsync(gameId, token, since, ct);
         return Results.Ok(events);
+    }
+
+    private static async Task<IResult> Spectate(
+        Guid gameId,
+        GameService svc,
+        CancellationToken ct)
+    {
+        var view = await svc.GetSpectatorViewAsync(gameId, ct);
+        return Results.Ok(view);
     }
 }

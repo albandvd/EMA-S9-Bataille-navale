@@ -17,4 +17,7 @@ public interface IGameApiClient
     Task<GameOverDto> ForfeitAsync(Guid gameId, string playerToken, CancellationToken ct);
     Task<IReadOnlyList<PowerDefinitionDto>> GetPowerCatalogAsync(CancellationToken ct);
     Task<FleetPresetDto> GetFleetPresetAsync(string presetName, CancellationToken ct);
+
+    /// <summary>E-09. Lecture seule, pas de <c>playerToken</c> requis.</summary>
+    Task<SpectatorViewDto> GetSpectatorViewAsync(Guid gameId, CancellationToken ct);
 }

@@ -1,3 +1,6 @@
+using Naval.Shared.Contracts;
+using Naval.Shared.Domain;
+
 namespace Naval.Api.Services;
 
 /// <summary>Déclenche le tour de l'IA après un tir humain en mode solo.</summary>
@@ -10,6 +13,6 @@ public sealed class AiTurnService
         _svc = svc;
     }
 
-    public Task PlayAsync(Guid gameId, CancellationToken ct) =>
+    public Task<(ShotResultDto result, Game game)?> PlayAsync(Guid gameId, CancellationToken ct) =>
         _svc.PlayAiTurnAsync(gameId, ct);
 }
