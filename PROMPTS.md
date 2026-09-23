@@ -1064,3 +1064,88 @@ d'attente, rejoindre par code, salon public). Point restant, signalé plutôt qu
 confirmation visuelle humaine du nouveau parcours front n'a pu être faite dans cet
 environnement — à valider en lançant `dotnet run --project src/Naval.Api` et
 `dotnet run --project src/Naval.App`, puis en jouant une partie privée à deux onglets.
+
+---
+
+## Merge de la PR #9 (multijoueur → main) et résolution des conflits
+
+**Prompt :** « merge la pull request feat(E-A): multijoueur en ligne — hub SignalR, présence,
+timer de tour, spectateur… #9 et merge les conflicts »
+
+**Décision et justification :**
+
+`gh` n'étant pas installé dans l'environnement, le merge a été fait par `git` en ligne de
+commande : simulation dans un worktree jetable (`git worktree add … origin/main` puis
+`git merge origin/multijoueur --no-commit --no-ff`) pour isoler l'opération du reste du dépôt,
+résolution des 6 fichiers en conflit, `dotnet build`/`dotnet test` avant tout commit, puis
+`git push origin HEAD:main` — un commit de merge à deux parents (`origin/main` et
+`origin/multijoueur`) poussé directement sur `main` ferme la PR #9 côté GitHub sans passer par
+le bouton « Merge ».
+
+Les conflits venaient tous de la même cause : `multijoueur` avait divergé de `main` avant le
+merge de la PR #8 (premier pouvoir, Sonar) — les deux branches avaient donc étendu les mêmes
+zones (constructeur `GameService`, `Program.cs`, `GameStateDto`, `Battle.razor`,
+`GameServiceTests`) de façon indépendante et non chevauchante. Résolution retenue par fichier :
+
+1. **`PROMPTS.md`.** Journal en écriture additive uniquement : les deux jeux d'entrées sont
+   conservés à la suite, aucune perte de contenu des deux côtés.
+2. **`Program.cs`.** `using Naval.Shared.Domain.Powers` (Sonar) et
+   `using Naval.Shared.Contracts` (multijoueur) sont deux ajouts indépendants ; même chose pour
+   les enregistrements DI (`IPowerHandler`/`PowerRegistry` d'un côté, `GameNotifier`/
+   `PresenceService`/`TurnTimeoutService`/`AddSignalR()` de l'autre) — combinés sans arbitrage,
+   aucun des deux ne remplaçait l'autre.
+3. **`GameService.cs`, deux conflits.** (a) Le `PlayerState` placeholder du joueur 2 doit à la
+   fois recevoir `equippedPowers` (Sonar, pour que la partie en ligne équipe aussi un loadout
+   par défaut) et être créé avec `IsConnected = false` (E-05, sinon la présence mentirait avant
+   qu'un adversaire ne rejoigne) — combinaison des deux, pas un choix entre elles. (b)
+   `GrantTurnStartBenefits` (E-10/E-14 : énergie + cooldowns au tour) et `ComputeTurnDeadline`
+   (E-07 : calcul de la deadline du timer) sont deux méthodes privées indépendantes, toutes
+   deux nécessaires (la seconde est déjà appelée plus haut dans `StartBattle`/`AdvanceTurn`) :
+   gardées l'une et l'autre.
+4. **`Battle.razor`, seul conflit avec un vrai arbitrage.** `main` (Sonar) avait ajouté un flux
+   de ciblage à deux temps : `HandlePower` arme `_pendingPower`, puis `HandleFire` vérifie
+   `_pendingPower` et route vers `ActivatePowerOn(powerId, target)` avec la case cliquée comme
+   cible — nécessaire pour un pouvoir `TargetKind.Area` comme Sonar. `multijoueur` avait divergé
+   *avant* ce flux et gardait l'ancien `HandleFire` qui calculait le son (tir manqué/touché/
+   coulé) en comparant l'état du jeu avant/après (`CountHits`, `var before = Store.CurrentGame`).
+   Ce diffing local est remplacé, côté `multijoueur`, par `OnShotResolved` : un handler abonné à
+   `Store.ShotResolved`, déclenché par le serveur (poussé en temps réel par le hub) aussi bien
+   pour un tir du joueur local que pour un tir adverse — le diffing avant/après ne pouvait de
+   toute façon pas couvrir les tirs distants. Choix : **garder le flux de ciblage `_pendingPower`
+   de Sonar** (fonctionnalité plus récente, testée, seule façon de cibler un pouvoir à zone) **et
+   remplacer le diffing avant/après par `OnShotResolved`** (correct aussi en multijoueur, où un
+   tir peut venir de l'adversaire) — suppression de `CountHits` et de la variable `before`,
+   devenus du code mort une fois `OnShotResolved` en place.
+5. **`Responses.cs`.** `GameStateDto` gagne le champ `FleetPreset` (ajouté par `multijoueur` pour
+   que le joueur qui rejoint par code sache quels navires placer) — ajout pur, aucun champ
+   retiré côté Sonar. `GameMapper.cs` et `contracts/openapi.yaml` documentaient déjà ce champ
+   sans conflit (auto-mergés), donc pas de divergence Shared/Contrats à corriger.
+6. **`GameServiceTests.cs`.** Concaténation des deux jeux de tests (aucun ne remplace l'autre),
+   puis correction mécanique : les tests écrits avant l'introduction de `PowerRegistry`
+   (branche `multijoueur`) appelaient encore `new GameService(store)` à un seul argument ; le
+   constructeur fusionné exige `GameService(IGameStore, PowerRegistry)`. Les 4 appels concernés
+   ont reçu `new PowerRegistry([new SonarHandler()])` en second argument, par cohérence avec les
+   tests déjà écrits côté Sonar — pas une nouvelle règle de test, juste un ajustement de
+   compilation après fusion.
+
+**Scénario de vérification :**
+- `dotnet build` dans le worktree de fusion, avant tout commit : 0 avertissement, 0 erreur.
+- `dotnet test` : 83/83 verts (61 déjà acquis avant la divergence + 22 apportés par la branche
+  `multijoueur`, aucune perte, aucune régression).
+- `dotnet format` relancé après résolution : aucun fichier touché (la mise en forme des DTO
+  fusionnés — `GameStateDto` notamment — était déjà conforme).
+- `grep -rl` de `<<<<<<<`/`=======`/`>>>>>>>` sur tout le dépôt après résolution : aucune
+  occurrence restante.
+- Relecture manuelle de `contracts/openapi.yaml` (`fleetPreset` dans `GameStateDto`) pour
+  confirmer qu'il n'y avait pas de divergence Contrats/YAML à corriger en plus du conflit `.cs`.
+- `git log -1 --format=%P` sur le commit de merge : deux parents confirmés
+  (`806289e…`, tip de `main`, et `2465f0d…`, tip de `multijoueur`) avant le `git push`.
+
+**Résultat observé :** Merge poussé sur `main` (`806289e..2dcf751`). Build et tests verts
+(83/83). Le flux de ciblage des pouvoirs à zone (Sonar) et le son de tir événementiel
+multijoueur (`OnShotResolved`) coexistent sans code mort. `gh` n'étant pas disponible, la
+fermeture de la PR #9 sur GitHub n'a pas été confirmée visuellement dans cette session — à
+vérifier sur la page de la PR (elle devrait apparaître « Merged » puisque le commit poussé sur
+`main` a `multijoueur` comme second parent).
+
+**Statut :** `terminé`
