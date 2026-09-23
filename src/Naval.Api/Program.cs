@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Naval.Api.Endpoints;
+using Naval.Api.Grpc;
 using Naval.Api.Hubs;
 using Naval.Api.Infrastructure;
 using Naval.Api.Services;
@@ -23,6 +24,9 @@ builder.Services.AddHostedService<TurnTimeoutService>();
 // ── SignalR (E-04) ──
 builder.Services.AddSignalR();
 
+// ── gRPC-Web (E-29 — relecture d'une partie terminée) ──
+builder.Services.AddGrpc();
+
 // ── JSON ──
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -37,11 +41,14 @@ builder.Services.AddProblemDetails();
 builder.Services.AddOpenApi();
 
 // ── CORS ──
+// En-têtes exposés : nécessaires pour qu'un client gRPC-Web dans le navigateur lise le
+// statut/message d'erreur gRPC, qui voyagent en trailers HTTP plutôt qu'en corps de réponse.
 builder.Services.AddCors(o => o.AddPolicy("app", p => p
     .WithOrigins(builder.Configuration["Cors:AppOrigin"] ?? "http://localhost:5018")
     .AllowAnyHeader()
     .AllowAnyMethod()
-    .AllowCredentials()));
+    .AllowCredentials()
+    .WithExposedHeaders("Grpc-Status", "Grpc-Message", "Grpc-Encoding", "Grpc-Accept-Encoding")));
 
 var app = builder.Build();
 
@@ -80,6 +87,7 @@ app.UseExceptionHandler(errApp => errApp.Run(async ctx =>
 }));
 
 app.UseCors("app");
+app.UseGrpcWeb();
 
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
@@ -98,6 +106,9 @@ PowerEndpoints.Map(app);
 
 // ── Hub temps réel (E-04) ──
 app.MapHub<GameHub>(GameHubMethods.Path).RequireCors("app");
+
+// ── gRPC-Web (E-29) ──
+app.MapGrpcService<NavalReplayService>().EnableGrpcWeb().RequireCors("app");
 
 app.Run();
 

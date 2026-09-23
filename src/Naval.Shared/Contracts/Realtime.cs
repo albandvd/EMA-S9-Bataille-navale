@@ -76,4 +76,5 @@ public static class ErrorCodes
     public const string InvalidTarget = "INVALID_TARGET";
     public const string CarrierRequired = "CARRIER_REQUIRED";
     public const string ShipAlreadyDamaged = "SHIP_ALREADY_DAMAGED";
+    public const string ReplayNotAvailable = "REPLAY_NOT_AVAILABLE";
 }

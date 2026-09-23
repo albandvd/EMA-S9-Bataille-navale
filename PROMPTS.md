@@ -1,6 +1,6 @@
 # Échanges décisifs avec l'IA
 
-Sélection des 6 échanges structurants, synthétisés depuis le journal automatique
+Sélection des 7 échanges structurants, synthétisés depuis le journal automatique
 (`.claude/hooks/journal-prompt.sh`). Quand le prompt n'a pas été consigné mot pour mot, la
 demande est reformulée et signalée comme telle.
 
@@ -89,3 +89,38 @@ demande est reformulée et signalée comme telle.
 * Résultat attendu, puis résultat observé : 69/69 verts ; deux tirs `(temps écoulé)` enchaînés sans action ; grilles spectateur à `.` avant déploiement.
 * Erreur que ce contrôle pourrait détecter : fuite vers un spectateur, service scoped capturé par un singleton, fin de partie non propagée.
 * Preuves reproductibles et limites : aucune validation visuelle humaine du nouveau front (à faire à deux onglets).
+
+---
+
+## Service gRPC-Web de relecture (E-29)
+
+* Outil / modèle si connu : Claude Code
+* Contexte : le référentiel exige un échange gRPC-Web démontrable ; aucun code gRPC n'existait,
+  l'ADR-002 documentait le choix de ne pas l'implémenter.
+* Prompt réellement utilisé : « Analyse les endroits où le gRPC peut être ajouté et mets-le en
+  place, pense à mettre à jour les documents liés. »
+* Réponse et hypothèses résumées : `docs/03-architecture.md` prévoyait déjà l'endroit exact
+  (`Naval.Api/Grpc/NavalReplayService.cs` + `Protos/naval.proto`) et l'usage (relecture d'une
+  partie terminée, `E-29`) — repris tel quel plutôt que d'inventer un nouveau périmètre. Un seul
+  RPC en streaming serveur (`StreamReplay`) rejoue `Game.Events` (déjà tenu par `GameService`),
+  sans dupliquer de règle de jeu. Le code métier stable (convention `ProblemDetails.code` côté
+  REST) est porté en trailer gRPC (`code`) pour les deux erreurs attendues : `NOT_FOUND` (partie
+  inconnue) et une nouvelle constante `ErrorCodes.ReplayNotAvailable` → `FAILED_PRECONDITION`
+  (partie pas encore terminée).
+* Décision et justification : retenu, périmètre volontairement limité à la relecture (pas de
+  gRPC sur le cycle de vie du jeu, pas de client gRPC-Web dans `Naval.App`) — cohérent avec
+  l'ADR-002 mis à jour plutôt que contredit. `Naval.Api.csproj` génère client **et** serveur
+  (`GrpcServices="Both"`) pour que les tests réutilisent le client généré sans dupliquer le
+  `.proto`.
+* Scénario ou commande de vérification : `dotnet test --filter NavalReplayServiceTests` — un
+  vrai échange gRPC-Web via `GrpcWebHandler` (l'encodage HTTP d'un navigateur) contre
+  `WebApplicationFactory`, pas une simulation ; puis `dotnet build` et `dotnet test` complets.
+* Résultat attendu, puis résultat observé : un flux `ReplayEvent` en ordre croissant de
+  séquence se terminant par `GameOver` pour une partie gagnée en 2 tirs (flotte adverse réduite
+  à un destroyer) ; `NOT_FOUND` sur une partie inconnue ; `FAILED_PRECONDITION` sur une partie en
+  cours → observé, 99/99 tests verts (96 existants + 3 nouveaux), 0 avertissement.
+* Erreur que ce contrôle pourrait détecter : replay accessible avant la fin de partie, code
+  métier absent des trailers, RPC qui plante au lieu de renvoyer un `RpcException` propre.
+* Preuves reproductibles et limites : pas de client gRPC-Web dans `Naval.App` — la démonstration
+  passe par les tests d'intégration ou un client externe (`grpcurl`, Postman) contre l'API
+  démarrée, pas par l'interface du jeu.

@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+option csharp_namespace = "Naval.Api.Grpc";
+
+package naval;
+
+// Relecture en streaming d'une partie terminée (E-29). Couvre le volet gRPC du
+// référentiel : REST + SignalR gèrent le jeu en direct (voir ADR-002), gRPC-Web est réservé
+// à ce cas d'usage où un flux serveur est le format naturel.
+service NavalReplay {
+  // Rejoue le journal d'événements d'une partie, dans l'ordre, un message par événement.
+  // Erreurs attendues : NOT_FOUND (partie inconnue), FAILED_PRECONDITION (partie pas encore
+  // terminée — le replay n'existe que pour une partie dont l'issue est connue).
+  rpc StreamReplay(ReplayRequest) returns (stream ReplayEvent);
+}
+
+message ReplayRequest {
+  string game_id = 1;
+}
+
+message ReplayEvent {
+  int32 sequence = 1;
+  string at_utc = 2;      // ISO 8601
+  string actor_id = 3;    // vide si l'événement n'a pas d'acteur (ex. changement de tour système)
+  string type = 4;        // nom du type d'événement (ShotFiredEvent, GameOverEvent, ...)
+  string message = 5;     // message humain déjà formé côté serveur
+}

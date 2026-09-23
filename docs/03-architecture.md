@@ -183,12 +183,17 @@ Simple, suffisant, honnête. À documenter comme tel : ce n'est pas un mécanism
 |---|---|---|
 | Cycle de vie (créer, rejoindre, déployer, tirer, pouvoir) | **REST/JSON** | Testable avec `api.http`, décrit par OpenAPI, sans état |
 | Notification temps réel à l'adversaire | **SignalR** | WebSocket avec repli automatique, client Blazor WASM de première classe |
-| Relecture d'une partie terminée | **gRPC-Web** *(optionnel, E-29)* | Couvre la partie gRPC du référentiel ; le streaming serveur est le cas d'usage naturel d'un replay |
+| Relecture d'une partie terminée | **gRPC-Web** (`E-29`, implémenté) | Couvre la partie gRPC du référentiel ; le streaming serveur est le cas d'usage naturel d'un replay |
 
 > gRPC **pur** ne fonctionne pas depuis un navigateur : il faut gRPC-Web côté serveur
-> (`app.UseGrpcWeb()`) et `GrpcWebHandler` côté client. Si vous ne voulez pas payer ce coût,
-> assumez-le en soutenance : « REST pour les commandes, SignalR pour le push ; gRPC n'apportait
-> pas de bénéfice ici. » C'est une réponse acceptable, à condition de l'avoir choisie.
+> (`app.UseGrpcWeb()`) et `GrpcWebHandler` côté client. C'est implémenté : `NavalReplayService`
+> (`src/Naval.Api/Grpc/`, contrat `src/Naval.Api/Protos/naval.proto`) expose un unique RPC en
+> streaming serveur, `StreamReplay`, qui rejoue le journal d'événements d'une partie terminée.
+> Voir [`docs/adr/ADR-002-rest-signalr-grpc.md`](adr/ADR-002-rest-signalr-grpc.md) pour la
+> justification du périmètre (pourquoi seulement le replay, pas le cycle de vie complet) et
+> `tests/Naval.Tests/Api/NavalReplayServiceTests.cs` pour un échange gRPC-Web de bout en bout
+> (succès + les deux erreurs attendues, `NOT_FOUND` et `FAILED_PRECONDITION`) contre un vrai
+> `GrpcWebHandler`.
 
 ### Contrat du hub
 

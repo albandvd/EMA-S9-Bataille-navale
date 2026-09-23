@@ -18,7 +18,7 @@ la position d'un navire adverse non découvert.
 git clone <url> && cd EMA-S9-Bataille-navale
 dotnet restore
 dotnet build      # 0 avertissement attendu (TreatWarningsAsErrors)
-dotnet test       # 96 tests, tous verts
+dotnet test       # 99 tests, tous verts
 ```
 
 Puis, dans deux terminaux séparés :
@@ -54,6 +54,24 @@ dépannage : [`infra/docker/README.md`](infra/docker/README.md).
 3. Tirez à tour de rôle jusqu'à la destruction d'une des deux flottes.
 4. Sur l'écran de résultat, **Rejouer** ramène au lobby pour démarrer une nouvelle partie.
 
+## Rejouer une partie terminée (gRPC-Web)
+
+`NavalReplayService` (`src/Naval.Api/Grpc/`) expose un RPC en streaming serveur,
+`StreamReplay`, qui rejoue le journal d'événements d'une partie terminée — c'est le volet gRPC
+du référentiel (`E-29`). Il n'y a pas de client dans `Naval.App` (voir
+[`docs/adr/ADR-002-rest-signalr-grpc.md`](docs/adr/ADR-002-rest-signalr-grpc.md) pour le
+périmètre retenu) ; pour le voir fonctionner :
+
+```bash
+dotnet test --filter NavalReplayServiceTests
+```
+
+Ce test fait un vrai échange gRPC-Web (via `GrpcWebHandler`, l'encodage HTTP qu'utiliserait un
+navigateur) contre le serveur réel, et démontre les deux erreurs attendues : `NOT_FOUND` (partie
+inconnue) et `FAILED_PRECONDITION` (partie pas encore terminée), chacune avec le code métier
+stable en trailer gRPC. Pour l'interroger à la main, un client comme `grpcurl` ou Postman peut
+pointer sur `src/Naval.Api/Protos/naval.proto` contre l'API démarrée (`http://localhost:5119`).
+
 ## Où trouver quoi
 
 | Vous cherchez | Fichier |
@@ -63,6 +81,7 @@ dépannage : [`infra/docker/README.md`](infra/docker/README.md).
 | L'organisation du dépôt et du binôme | `docs/03-architecture.md` |
 | Les assets et comment les produire | `docs/04-assets.md` |
 | Le contrat HTTP | `contracts/openapi.yaml` |
+| Le contrat gRPC (relecture de partie) | `src/Naval.Api/Protos/naval.proto` |
 | Les DTO | `src/Naval.Shared/Contracts/` |
 | Les décisions d'architecture (ADR) | `docs/adr/` |
 | Le journal des échanges avec l'IA (livrable noté) | `PROMPTS.md` |
@@ -81,7 +100,7 @@ dotnet format                                  # mise en forme
 ## Limites connues
 
 - Pas de persistance (parties en mémoire, `E-27` non demandée), pas de TLS en local, pas de CI.
-- Le point gRPC du référentiel n'est pas couvert par le code actuel (voir
-  [`docs/adr/ADR-002-rest-signalr-grpc.md`](docs/adr/ADR-002-rest-signalr-grpc.md)) : REST +
-  SignalR ont été jugés suffisants pour les besoins du jeu.
+- gRPC-Web est limité à la relecture d'une partie terminée (`E-29`) ; il n'y a pas de client
+  gRPC-Web dans `Naval.App`, ni de gRPC sur le cycle de vie du jeu (choix documenté dans
+  [`docs/adr/ADR-002-rest-signalr-grpc.md`](docs/adr/ADR-002-rest-signalr-grpc.md)).
 - Le mute audio n'est pas persisté entre deux sessions ; les polices ne sont pas auto-hébergées.

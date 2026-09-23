@@ -6,7 +6,15 @@
 
   <ItemGroup>
     <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.1" />
+    <PackageReference Include="Grpc.AspNetCore" Version="2.84.0" />
+    <PackageReference Include="Grpc.AspNetCore.Web" Version="2.84.0" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- "Both" plutôt que "Server" : le client généré est réutilisé tel quel par les tests
+         d'intégration gRPC-Web (NavalReplayServiceTests), sans dupliquer le .proto. -->
+    <Protobuf Include="Protos\naval.proto" GrpcServices="Both" />
   </ItemGroup>
 
   <PropertyGroup>

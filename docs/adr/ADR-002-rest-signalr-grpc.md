@@ -26,17 +26,17 @@ WebAssembly) consomme ce transport nativement, sans code de compatibilité maiso
 ## Décision
 
 REST/JSON pour toutes les actions de jeu (créer, rejoindre, déployer, tirer, pouvoir), SignalR
-pour la notification temps réel à l'adversaire. gRPC n'a pas été implémenté : il restait une
-option pour un futur replay, jamais une obligation.
+pour la notification temps réel à l'adversaire, gRPC-Web réservé exactement à l'usage prévu à
+l'option 3 : la relecture d'une partie terminée (`E-29`).
 
 ## Justification
 
 SignalR est le seul des trois qui offre un client Blazor WebAssembly de première classe et un
 repli automatique (WebSocket → SSE → long polling) sans code à écrire. Payer le coût de
 gRPC-Web n'a de sens que pour un flux réellement continu comme un replay, pas pour des requêtes
-ponctuelles déjà couvertes par REST + OpenAPI. C'est l'argument décisif retenu pour la
-soutenance : « REST pour les commandes, SignalR pour le push ; gRPC n'apportait pas de bénéfice
-ici. »
+ponctuelles déjà couvertes par REST + OpenAPI. C'est l'argument décisif : « REST pour les
+commandes, SignalR pour le push ; gRPC là où un flux serveur est le format naturel, pas
+ailleurs. »
 
 ## Conséquences
 
@@ -44,7 +44,20 @@ Facile : `contracts/openapi.yaml` reste la source de vérité unique pour tout c
 événementiel ; les méthodes du hub `GameHub` appellent le même `GameService` que les endpoints
 REST, sans logique dupliquée.
 
-Coûteux : le volet gRPC du référentiel du module reste non couvert — à assumer explicitement en
-soutenance plutôt qu'à improviser. Si `E-29` (replay) est un jour demandé, le dossier
-`Naval.Api/Grpc/` prévu dans l'arborescence de `docs/03-architecture.md` reste entièrement à
-créer.
+**Mise à jour du 2026-09-23 — implémentation.** Le volet gRPC a été construit : contrat
+`src/Naval.Api/Protos/naval.proto`, service `NavalReplayService` (`Naval.Api/Grpc/`), monté via
+`app.UseGrpcWeb()` / `MapGrpcService<NavalReplayService>().EnableGrpcWeb()`. Un seul RPC en
+streaming serveur, `StreamReplay`, rejoue le journal d'événements déjà tenu par `Game.Events` —
+aucune règle de jeu n'est dupliquée, le service ne fait que lire `IGameStore` comme le reste de
+l'API. Les deux erreurs attendues sont couvertes : `NOT_FOUND` (partie inconnue) et
+`FAILED_PRECONDITION` (partie pas encore terminée), toutes deux avec le code métier stable en
+trailer gRPC (`code`), sur le même principe que l'extension `code` des `ProblemDetails` REST.
+Testé de bout en bout dans `NavalReplayServiceTests` via un vrai `GrpcWebHandler` contre
+`WebApplicationFactory` — un échange gRPC-Web réel, pas une simulation.
+
+Coûteux, accepté sciemment : ce n'est pas un client gRPC-Web dans `Naval.App` — la preuve
+d'échange repose sur les tests d'intégration et un client externe (`grpcurl`, Postman), pas sur
+une UI. Étendre le replay à un vrai lecteur dans le front demanderait de partager le `.proto`
+avec `Naval.App` (sans y référencer `Naval.Api`, cf. `docs/03-architecture.md` §2) et d'y ajouter
+`Grpc.Net.Client.Web` — non fait, car hors du périmètre demandé (couvrir le volet gRPC du
+référentiel, pas construire un lecteur de replay complet).
