@@ -100,8 +100,12 @@ public static class GameMapper
             ]);
     }
 
-    public static PowerResultDto ToPowerResultDto(Game game, PowerActivationResult activation) =>
-        new(
+    /// <summary>À appeler APRÈS le passage de tour éventuel : NextPlayerId, GameOver et WinnerId
+    /// reflètent l'état de la partie au moment de l'appel.</summary>
+    public static PowerResultDto ToPowerResultDto(Game game, PlayerState caster, PowerActivationResult activation)
+    {
+        var nextPlayerId = game.CurrentPlayerId?.Value;
+        return new(
             GameId: game.Id.Value,
             TurnNumber: game.TurnNumber,
             PowerId: activation.PowerId,
@@ -113,11 +117,14 @@ public static class GameMapper
                 .Select(c => new RevealedCellDto(new CoordinateDto(c.Cell.X, c.Cell.Y), c.Occupied))
                 .ToList(),
             RevealedCount: activation.Effect.RevealedCount,
-            Shots: [],
+            Shots: activation.Effect.Shots
+                .Select(s => ToShotResultDto(game, caster, s.Target, s.Result, nextPlayerId))
+                .ToList(),
             Message: activation.Effect.Message,
-            NextPlayerId: null,
-            GameOver: false,
-            WinnerId: null);
+            NextPlayerId: nextPlayerId,
+            GameOver: game.Status is GameStatus.Finished or GameStatus.Abandoned,
+            WinnerId: game.WinnerId);
+    }
 
     public static GameEventDto ToEventDto(GameEvent evt)
     {

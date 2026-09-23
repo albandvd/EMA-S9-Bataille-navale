@@ -80,6 +80,7 @@ public enum PowerId
     OrbitalStrike,
     PiercingMissile,
     NavalMine,
+    HeavyBomb,
     // Défensif
     Decoy,
     Shield,

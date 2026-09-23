@@ -44,7 +44,9 @@ public sealed class GameService
         if (req.Mode == GameMode.PrivateOnline)
             joinCode = GenerateJoinCode(rng);
 
-        var equippedPowers = req.Powers.Count > 0 ? req.Powers : (IReadOnlyList<PowerId>)[PowerId.Sonar];
+        var equippedPowers = req.Powers.Count > 0
+            ? req.Powers
+            : (IReadOnlyList<PowerId>)[PowerId.Sonar, PowerId.HeavyBomb];
 
         var p1 = new PlayerState(p1Id, req.PlayerName, PlayerSlot.One, p1Token,
             req.GridWidth, req.GridHeight, equippedPowers: equippedPowers);
@@ -234,24 +236,8 @@ public sealed class GameService
                 game.NextSequence(), DateTimeOffset.UtcNow, shooter.Id, coord, shotResult,
                 FormatShotMessage(shooter.Name, coord, shotResult.Outcome)));
 
-            Guid? nextPlayerId = null;
-            if (GameEngine.IsGameOver(game))
-            {
-                var winner = GameEngine.FindWinner(game)!;
-                game.Status = GameStatus.Finished;
-                game.WinnerId = winner.Id.Value;
-                game.CurrentPlayerId = null;
-
-                game.AddEvent(new GameOverEvent(
-                    game.NextSequence(), DateTimeOffset.UtcNow, winner.Id,
-                    "FleetDestroyed",
-                    $"Partie terminée. {winner.Name} remporte la victoire."));
-            }
-            else
-            {
-                AdvanceTurn(game, shooter.Id);
-                nextPlayerId = game.CurrentPlayerId?.Value;
-            }
+            EndTurn(game, shooter.Id);
+            var nextPlayerId = game.CurrentPlayerId?.Value;
 
             await _store.SaveAsync(game, ct);
 
@@ -291,24 +277,8 @@ public sealed class GameService
                 game.NextSequence(), DateTimeOffset.UtcNow, aiPlayer.Id, coord, shotResult,
                 FormatShotMessage("IA", coord, shotResult.Outcome)));
 
-            Guid? nextPlayerId = null;
-            if (GameEngine.IsGameOver(game))
-            {
-                var winner = GameEngine.FindWinner(game)!;
-                game.Status = GameStatus.Finished;
-                game.WinnerId = winner.Id.Value;
-                game.CurrentPlayerId = null;
-
-                game.AddEvent(new GameOverEvent(
-                    game.NextSequence(), DateTimeOffset.UtcNow, winner.Id,
-                    "FleetDestroyed",
-                    $"Partie terminée. {winner.Name} remporte la victoire."));
-            }
-            else
-            {
-                AdvanceTurn(game, aiPlayer.Id);
-                nextPlayerId = game.CurrentPlayerId?.Value;
-            }
+            EndTurn(game, aiPlayer.Id);
+            var nextPlayerId = game.CurrentPlayerId?.Value;
 
             await _store.SaveAsync(game, ct);
             return GameMapper.ToShotResultDto(game, aiPlayer, coord, shotResult, nextPlayerId);
@@ -392,13 +362,24 @@ public sealed class GameService
             game.AddEvent(new PowerActivatedEvent(
                 game.NextSequence(), DateTimeOffset.UtcNow, caster.Id, activation.PowerId,
                 $"{caster.Name} active {activation.PowerId}."));
+            foreach (var shot in activation.Effect.Shots)
+                game.AddEvent(new ShotFiredEvent(
+                    game.NextSequence(), DateTimeOffset.UtcNow, caster.Id, shot.Target, shot.Result,
+                    FormatShotMessage(caster.Name, shot.Target, shot.Result.Outcome)));
             game.AddEvent(new PowerResolvedEvent(
                 game.NextSequence(), DateTimeOffset.UtcNow, caster.Id, activation.PowerId,
                 activation.Effect.RevealedCount, activation.Effect.Message));
 
+            // Un pouvoir qui remplace le tir (Bombe lourde) termine le tour comme un tir normal.
+            if (activation.Effect.ConsumesTurn)
+            {
+                game.TurnNumber++;
+                EndTurn(game, caster.Id);
+            }
+
             await _store.SaveAsync(game, ct);
 
-            return (GameMapper.ToPowerResultDto(game, activation), game);
+            return (GameMapper.ToPowerResultDto(game, caster, activation), game);
         }
         finally
         {
@@ -456,6 +437,27 @@ public sealed class GameService
         game.AddEvent(new TurnChangedEvent(
             game.NextSequence(), DateTimeOffset.UtcNow, game.Player1.Id, 1,
             "La bataille commence. Tour de " + game.Player1.Name + "."));
+    }
+
+    /// <summary>Clôt le tour d'une action de tir (tir normal, tour IA ou pouvoir qui consomme
+    /// le tour) : termine la partie si une flotte est détruite, sinon passe la main.</summary>
+    private static void EndTurn(Game game, PlayerId actor)
+    {
+        if (!GameEngine.IsGameOver(game))
+        {
+            AdvanceTurn(game, actor);
+            return;
+        }
+
+        var winner = GameEngine.FindWinner(game)!;
+        game.Status = GameStatus.Finished;
+        game.WinnerId = winner.Id.Value;
+        game.CurrentPlayerId = null;
+
+        game.AddEvent(new GameOverEvent(
+            game.NextSequence(), DateTimeOffset.UtcNow, winner.Id,
+            "FleetDestroyed",
+            $"Partie terminée. {winner.Name} remporte la victoire."));
     }
 
     private static void AdvanceTurn(Game game, PlayerId currentShooter)

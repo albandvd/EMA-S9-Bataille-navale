@@ -936,3 +936,67 @@ défaut, `JoinGameRequest.Powers` silencieusement ignoré, commentaire obsolète
 préexistants + 3 nouveaux). Aucun fichier hors du périmètre autorisé n'a été touché.
 
 **Statut :** `terminé`
+
+## Deuxième pouvoir — Bombe lourde (P-24, `HeavyBomb`)
+
+**Prompt :** « En créant une nouvelle branche j'aimerais que tu fasses un nouveau pouvoir. Comme
+nous avons déjà un pouvoir de reconnaissance, j'aimerais avoir un pouvoir de destruction cette
+fois. Ce pouvoir aura un coût et un cooldown significativement plus longs (10-12). Je te laisse
+libre de décider de la puissance de la bombe et de sa manière de taper (en x, en +, une simple
+explosion autour du centre…) »
+
+**Décision et justification :**
+
+1. **Forme : carré 3×3 centré (Chebyshev ≤ 1), pas un X ni un +.** Le + existe déjà au
+   catalogue (`CrossStrike`, 5 cases pour 6 d'énergie) ; le X éparpille les tirs en diagonale,
+   où deux cases touchées n'appartiennent presque jamais au même navire. Le carré garantit
+   qu'un navire qui traverse le centre prend 3 touches alignées, ce qui correspond à l'idée
+   d'un pouvoir « de destruction » plutôt que de recherche. Rayon 1 et pas 2 (5×5 = 25 cases)
+   pour ne pas empiéter sur la future Frappe orbitale (P-11, 5×5 après 10 tours de charge).
+2. **Coût 10, cooldown 11, pas de charge.** Avec +1 énergie par tour, 10 d'énergie ≈ 6 à 8
+   tours d'économie (selon les touches) : la bombe arrive tard et une fois par tranche de ~11
+   tours, soit 2 à 3 utilisations sur une partie de 45-60 tirs. Pas de tours de charge : le
+   coût en tempo est déjà payé par l'économie d'énergie, et la charge + porteur est réservée
+   aux pouvoirs « dévastateurs » (≥ 3 tours) selon docs/02-pouvoirs.md §1.
+3. **Les touches de la bombe ne rapportent pas d'énergie.** Sans ça, une bombe qui touche 3
+   cases et coule un navire rembourserait 2+2+3 = 7 des 10 points dépensés. Implémenté par un
+   paramètre `grantEnergy` (défaut `true`) sur `GameEngine.ExecuteShot`, pour réutiliser la
+   résolution de tir existante plutôt que la dupliquer dans le handler.
+4. **La bombe remplace le tir du tour.** Sans ça, bombe + tir normal le même tour = 10 tirs.
+   Ajout de `Shots` et `ConsumesTurn` sur `PowerEffectResult` ; `GameService.UsePowerAsync`
+   émet un `ShotFiredEvent` par case (flux complet pour le replay E-26), puis clôt le tour via
+   un nouveau helper `EndTurn` — extrait de `FireAsync`/`PlayAiTurnAsync` où la logique fin de
+   partie/passage de main était dupliquée. En solo, l'endpoint déclenche le tour de l'IA comme
+   après un tir. `PowerResultDto` portait déjà `Shots`, `NextPlayerId`, `GameOver`,
+   `WinnerId` : aucun champ de contrat ajouté, seulement la valeur d'enum `HeavyBomb`.
+5. **Bord de grille et cases déjà visées.** La zone est tronquée à la grille (4 cases en coin) ;
+   les cases déjà visées sont sautées, pas refusées. Seule une zone intégralement déjà visée est
+   refusée (`INVALID_TARGET`, 400) pour ne pas faire payer 10 d'énergie pour rien. Aucune fuite
+   d'information : seules les cases frappées sont révélées, avec le même résultat qu'un tir.
+6. **Loadout par défaut `[Sonar, HeavyBomb]`.** Le front n'a pas encore de sélection de loadout
+   (E-13) : sans ce changement, la bombe serait inaccessible en jeu. Doc de
+   `CreateGameRequest.Powers` et `contracts/openapi.yaml` alignés.
+7. **Front : aucune logique propre à la bombe.** `Battle.razor` compare seulement la grille
+   adverse avant/après le pouvoir : si des cases ont été frappées, même retour sonore qu'un tir,
+   sinon ping ; redirection vers `/result` si la partie est finie. Icône `heavy-bomb.svg`.
+
+**Hors périmètre, signalé :** l'IA a la bombe dans son loadout mais n'utilise toujours aucun
+pouvoir (règle de symétrie §4.6 non encore traitée) ; l'équilibrage > 65 % de victoire n'a pas
+été mesuré.
+
+**Scénario de vérification :**
+- 6 tests dans `tests/Naval.Tests/Domain/Powers/HeavyBombTests.cs` : nominal (9 tirs, destroyer
+  coulé, énergie 10 → 0, cooldown 11), refus énergie insuffisante, refus zone entièrement
+  visée, centre hors grille, coin (4 cases exactement), cases déjà visées sautées.
+- 2 tests dans `GameServiceTests.cs` : la bombe passe la main à l'adversaire (`TurnNumber` 1 → 2),
+  et une bombe qui coule le dernier navire termine la partie (`GameOver`, `WinnerId`).
+- Run réel API + front : partie solo via l'API, 7 tirs pour atteindre 10 d'énergie, bombe en E5.
+  Puis dans le navigateur : déploiement manuel et affichage de l'écran de bataille.
+
+**Résultat observé :** `dotnet build` → 0 avertissement ; `dotnet format --verify-no-changes` →
+propre ; `dotnet test` → 69/69 verts (61 + 8). En réel : 9 tirs D4-F6 à `energyGained: 0`, énergie
+10 → 0, `nextPlayerId` = IA, l'IA a joué avant la réponse, cooldown affiché 10 au retour du
+joueur, second usage → 409 `POWER_ON_COOLDOWN`. Côté front, le bouton HeavyBomb et son icône
+s'affichent dans la barre de pouvoirs (grisé tant que l'énergie < 10).
+
+**Statut :** `terminé`

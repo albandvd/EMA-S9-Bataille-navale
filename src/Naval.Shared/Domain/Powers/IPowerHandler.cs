@@ -6,10 +6,18 @@ namespace Naval.Shared.Domain.Powers;
 /// (ex : Radar tactique). Sonar ne l'utilise jamais — il ne renvoie qu'un décompte.</summary>
 public sealed record RevealedCell(Coordinate Cell, bool Occupied);
 
+/// <summary>Un tir réellement appliqué par un pouvoir offensif sur la flotte adverse.</summary>
+public sealed record PowerShot(Coordinate Target, ShotResult Result);
+
 /// <summary>Résultat brut de l'exécution d'un pouvoir, avant mise en forme en DTO.</summary>
+/// <param name="Shots">Tirs appliqués ; vide pour un pouvoir de reconnaissance.</param>
+/// <param name="ConsumesTurn">true si le pouvoir remplace le tir du tour : l'appelant vérifie
+/// alors la fin de partie et passe la main, comme après un tir normal.</param>
 public sealed record PowerEffectResult(
     int? RevealedCount,
     IReadOnlyList<RevealedCell> RevealedCells,
+    IReadOnlyList<PowerShot> Shots,
+    bool ConsumesTurn,
     string Message);
 
 /// <summary>

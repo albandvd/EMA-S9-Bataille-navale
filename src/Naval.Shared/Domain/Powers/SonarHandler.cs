@@ -37,6 +37,8 @@ public sealed class SonarHandler : IPowerHandler
         return new PowerEffectResult(
             RevealedCount: count,
             RevealedCells: [],
+            Shots: [],
+            ConsumesTurn: false,
             Message: $"Sonar : {count} case(s) détectée(s) en zone.");
     }
 

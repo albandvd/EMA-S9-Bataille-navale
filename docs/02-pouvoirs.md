@@ -88,6 +88,7 @@ Version corrigée retenue : `P-11 Frappe Orbitale`, ci-dessous.
 | P-11 | **Frappe orbitale** | 8 | 10 | — (U=1) | Détruit intégralement une zone 5×5 (toutes les cases de navire dedans sont marquées touchées) | 10 tours offerts à l'adversaire + porteur révélé au tour 5 + annulable par sabotage |
 | P-12 | **Missile perforant** | 5 | 1 | 4 | Touche une case ; si c'est une touche, touche automatiquement la case suivante dans l'axe du navire | Ne sert à rien si le premier tir manque |
 | P-13 | **Mine navale** | 3 | 0 | 3 | Pose une mine sur **sa propre** grille ; si l'adversaire tire dessus, il perd son prochain tour | L'adversaire peut ne jamais tirer là ; l'énergie est alors gaspillée |
+| P-24 | **Bombe lourde** (`HeavyBomb`) | 10 | 0 | 11 | Tire sur un carré 3×3 centré sur la cible (tronqué au bord de la grille) ; remplace le tir du tour | ≈ 8 tours d'économie + 11 tours de cooldown pour 9 tirs ; ses touches ne rapportent **aucune** énergie, sinon elle s'autofinance |
 
 ### Défensif
 

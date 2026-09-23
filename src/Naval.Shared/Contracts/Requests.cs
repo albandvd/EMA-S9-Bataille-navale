@@ -13,7 +13,7 @@ public readonly record struct CoordinateDto(int X, int Y);
 /// <param name="FleetPreset">"Classic" (5 navires) ou "Skirmish" (3 navires).</param>
 /// <param name="AiLevel">Requis si Mode == SinglePlayer, ignoré sinon.</param>
 /// <param name="Powers">Exactement 3 pouvoirs pour un loadout personnalisé ; une liste vide
-/// équipe Sonar par défaut sur les deux joueurs (temporaire, en attendant la sélection de
+/// équipe Sonar et Bombe lourde par défaut sur les deux joueurs (temporaire, en attendant la sélection de
 /// loadout complète, E-13).</param>
 /// <param name="TurnTimeoutSeconds">0 = pas de limite. 10 à 120 sinon.</param>
 /// <param name="Seed">Graine de génération, pour rejouer une partie à l'identique. Optionnel.</param>

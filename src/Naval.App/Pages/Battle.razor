@@ -76,9 +76,30 @@
     private async Task ActivatePowerOn(PowerId powerId, CoordinateDto target)
     {
         _pendingPower = null;
-        Audio.Play("sonar-ping");
+        var before = Store.CurrentGame;
         await Store.UsePowerAsync(powerId, new PowerTargetDto(target, null, null, null, null));
+        var after = Store.CurrentGame;
+
+        // Un pouvoir offensif (Bombe lourde) a frappé la grille adverse : même retour sonore
+        // qu'un tir. Sinon, ping de détection. Aucune règle ici, seulement la lecture de l'état.
+        if (Store.LastError is null && before is not null && after is not null
+            && CountShots(after.Opponent.TargetBoard) > CountShots(before.Opponent.TargetBoard))
+        {
+            PlayFireResult(before, after);
+        }
+        else
+        {
+            Audio.Play(Store.LastError is null ? "sonar-ping" : "deny");
+        }
+
+        if (after?.Status == GameStatus.Finished)
+        {
+            Navigation.NavigateTo("/result");
+        }
     }
+
+    private static int CountShots(BoardViewDto board) =>
+        board.Rows.Sum(row => row.Count(c => c != '.'));
 
     /// <summary>
     /// Choisit le bruitage du résultat en comparant l'état avant/après : ce n'est pas une

@@ -13,7 +13,7 @@ public sealed class PowerRegistryTests
         public PowerId Id => PowerId.Sonar;
         public string? Validate(PlayerState caster, PlayerState target, PowerTargetDto powerTarget) => null;
         public PowerEffectResult Execute(PlayerState caster, PlayerState target, PowerTargetDto powerTarget) =>
-            new(RevealedCount: 0, RevealedCells: [], Message: "stub");
+            new(RevealedCount: 0, RevealedCells: [], Shots: [], ConsumesTurn: false, Message: "stub");
     }
 
     [Fact]

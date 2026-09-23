@@ -69,6 +69,11 @@ public static class PowerCatalog
             EnergyCost: 6, ChargeTurns: 0, Cooldown: 4, MaxUses: -1,
             TargetKind: TargetKind.Cell, Radius: null, RequiresCarrier: false, IconName: "piercing"),
 
+        new(PowerId.HeavyBomb, "Bombe lourde", PowerCategory.Offense,
+            "Pilonne un carré 3×3 centré sur la cible. Remplace le tir du tour ; ses touches ne rapportent pas d'énergie.",
+            EnergyCost: 10, ChargeTurns: 0, Cooldown: 11, MaxUses: -1,
+            TargetKind: TargetKind.Area, Radius: 1, RequiresCarrier: false, IconName: "bomb"),
+
         new(PowerId.NavalMine, "Mine navale", PowerCategory.Offense,
             "Pose une mine sur votre grille ; explose si un navire adverse passe dessus (mode sans IA uniquement).",
             EnergyCost: 3, ChargeTurns: 0, Cooldown: 3, MaxUses: 3,
