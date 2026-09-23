@@ -3,27 +3,31 @@ using Naval.Shared.Contracts;
 namespace Naval.Shared.Domain.Powers;
 
 /// <summary>
-/// Bombe lourde — pouvoir de destruction. Tire sur chaque case d'un carré 3×3 centré sur la
-/// cible (distance de Chebyshev ≤ 1, contrairement au disque euclidien du Sonar).
+/// Base des pouvoirs de destruction de zone (Bombe lourde, Tsar Bomba). Tire sur chaque case
+/// d'un carré centré sur la cible, de demi-côté <c>Radius</c> lu dans <see cref="PowerCatalog"/>
+/// (distance de Chebyshev, contrairement au disque euclidien du Sonar).
 /// <list type="bullet">
-/// <item>La zone est tronquée au bord de la grille : une bombe en coin ne frappe que 4 cases.</item>
+/// <item>La zone est tronquée au bord de la grille.</item>
 /// <item>Les cases déjà visées sont ignorées, pas refusées ; seule une zone entièrement déjà
-/// visée est refusée, pour ne pas faire payer 10 d'énergie pour rien.</item>
+/// visée est refusée, pour ne pas faire payer l'énergie pour rien.</item>
 /// <item>Les touches ne rapportent pas d'énergie et la bombe consomme le tour de tir.</item>
 /// </list>
 /// Aucune information supplémentaire ne fuit : seules les cases frappées sont révélées, avec le
 /// même résultat qu'un tir normal.
 /// </summary>
-public sealed class HeavyBombHandler : IPowerHandler
+public abstract class AreaBombHandler : IPowerHandler
 {
-    private const int Radius = 1; // carré 3×3
+    public abstract PowerId Id { get; }
 
-    public PowerId Id => PowerId.HeavyBomb;
+    private PowerDefinitionDto Definition => PowerCatalog.Find(Id)!;
+
+    private int Radius => Definition.Radius
+        ?? throw new InvalidOperationException($"{Id} doit définir un rayon dans PowerCatalog.");
 
     public string? Validate(PlayerState caster, PlayerState target, PowerTargetDto powerTarget)
     {
         if (powerTarget.Cell is null)
-            return "La Bombe lourde nécessite une case cible.";
+            return $"{Definition.Name} nécessite une case cible.";
 
         var center = new Coordinate(powerTarget.Cell.Value.X, powerTarget.Cell.Value.Y);
         if (!center.IsWithinBounds(caster.OutgoingBoard.Width, caster.OutgoingBoard.Height))
@@ -53,13 +57,14 @@ public sealed class HeavyBombHandler : IPowerHandler
             RevealedCells: [],
             Shots: shots,
             ConsumesTurn: true,
-            Message: $"Bombardement en secteur {ToLabel(center)} : {hits} touche(s), {sunk} navire(s) coulé(s).");
+            Message: $"{Definition.Name} en secteur {ToLabel(center)} : {hits} touche(s), {sunk} navire(s) coulé(s).");
     }
 
-    private static IEnumerable<Coordinate> BlastZone(Coordinate center, Board board)
+    private IEnumerable<Coordinate> BlastZone(Coordinate center, Board board)
     {
-        for (int dy = -Radius; dy <= Radius; dy++)
-            for (int dx = -Radius; dx <= Radius; dx++)
+        int radius = Radius;
+        for (int dy = -radius; dy <= radius; dy++)
+            for (int dx = -radius; dx <= radius; dx++)
             {
                 var cell = new Coordinate(center.X + dx, center.Y + dy);
                 if (cell.IsWithinBounds(board.Width, board.Height))
@@ -68,4 +73,16 @@ public sealed class HeavyBombHandler : IPowerHandler
     }
 
     private static string ToLabel(Coordinate c) => $"{(char)('A' + c.X)}{c.Y + 1}";
+}
+
+/// <summary>Bombe lourde — carré 3×3, coût 10, cooldown 11.</summary>
+public sealed class HeavyBombHandler : AreaBombHandler
+{
+    public override PowerId Id => PowerId.HeavyBomb;
+}
+
+/// <summary>Tsar Bomba — carré 5×5, coût 40, une seule utilisation par partie.</summary>
+public sealed class TsarBombaHandler : AreaBombHandler
+{
+    public override PowerId Id => PowerId.TsarBomba;
 }

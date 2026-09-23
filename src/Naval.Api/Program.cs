@@ -12,6 +12,7 @@ builder.Services.AddScoped<GameService>();
 builder.Services.AddScoped<AiTurnService>();
 builder.Services.AddSingleton<IPowerHandler, SonarHandler>();
 builder.Services.AddSingleton<IPowerHandler, HeavyBombHandler>();
+builder.Services.AddSingleton<IPowerHandler, TsarBombaHandler>();
 builder.Services.AddSingleton(sp => new PowerRegistry(sp.GetServices<IPowerHandler>()));
 
 // ── JSON ──

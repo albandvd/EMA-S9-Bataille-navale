@@ -70,7 +70,7 @@ Version corrigée retenue : `P-11 Frappe Orbitale`, ci-dessous.
 
 | ID | Nom | E | C | CD | Effet | Pourquoi c'est équilibré |
 |---|---|---|---|---|---|
-| P-01 | **Sonar** | 3 | 2 | 3 | Renvoie *le nombre* de cases occupées dans un disque de rayon 4, pas leur position | Information floue : réduit l'espace de recherche sans le résoudre |
+| P-01 | **Sonar** | 3 | 2 | 3 | Renvoie *le nombre* de cases occupées dans un disque de rayon 3 (réduit de 4 à 3), pas leur position | Information floue : réduit l'espace de recherche sans le résoudre |
 | P-02 | **Radar tactique** | 5 | 0 | 4 | Révèle le contenu exact d'une zone 3×3 | Cher et immédiat ; 9 cases sur 100, ça reste un pari |
 | P-03 | **Drone de ligne** | 4 | 1 | 3 | Renvoie le nombre de cases occupées sur une ligne ou une colonne entière | Complémentaire du sonar : croiser ligne + colonne trilatère une position |
 | P-04 | **Interception radio** | 3 | 1 | 5 | Révèle l'orientation (H/V) et la taille d'un navire intact tiré au hasard | Aléatoire : on ne choisit pas la cible |
@@ -89,6 +89,7 @@ Version corrigée retenue : `P-11 Frappe Orbitale`, ci-dessous.
 | P-12 | **Missile perforant** | 5 | 1 | 4 | Touche une case ; si c'est une touche, touche automatiquement la case suivante dans l'axe du navire | Ne sert à rien si le premier tir manque |
 | P-13 | **Mine navale** | 3 | 0 | 3 | Pose une mine sur **sa propre** grille ; si l'adversaire tire dessus, il perd son prochain tour | L'adversaire peut ne jamais tirer là ; l'énergie est alors gaspillée |
 | P-24 | **Bombe lourde** (`HeavyBomb`) | 10 | 0 | 11 | Tire sur un carré 3×3 centré sur la cible (tronqué au bord de la grille) ; remplace le tir du tour | ≈ 8 tours d'économie + 11 tours de cooldown pour 9 tirs ; ses touches ne rapportent **aucune** énergie, sinon elle s'autofinance |
+| P-25 | **Tsar Bomba** (`TsarBomba`) | 40 | 0 | — (U=1) | Tire sur un carré 5×5 centré sur la cible (tronqué au bord) ; remplace le tir du tour | 40 d'énergie sans remboursement par les touches : arrive très tard, une seule fois, et rien ne garantit que la zone contienne encore des navires |
 
 ### Défensif
 

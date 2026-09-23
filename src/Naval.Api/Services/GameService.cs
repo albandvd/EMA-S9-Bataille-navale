@@ -46,7 +46,7 @@ public sealed class GameService
 
         var equippedPowers = req.Powers.Count > 0
             ? req.Powers
-            : (IReadOnlyList<PowerId>)[PowerId.Sonar, PowerId.HeavyBomb];
+            : (IReadOnlyList<PowerId>)[PowerId.Sonar, PowerId.HeavyBomb, PowerId.TsarBomba];
 
         var p1 = new PlayerState(p1Id, req.PlayerName, PlayerSlot.One, p1Token,
             req.GridWidth, req.GridHeight, equippedPowers: equippedPowers);

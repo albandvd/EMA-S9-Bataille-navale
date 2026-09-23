@@ -81,6 +81,7 @@ public enum PowerId
     PiercingMissile,
     NavalMine,
     HeavyBomb,
+    TsarBomba,
     // Défensif
     Decoy,
     Shield,

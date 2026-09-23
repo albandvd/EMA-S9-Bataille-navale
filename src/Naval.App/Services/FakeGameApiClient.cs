@@ -59,8 +59,8 @@ public sealed class FakeGameApiClient : IGameApiClient
     private static readonly IReadOnlyList<PowerDefinitionDto> Catalog =
     [
         new(PowerId.Sonar, "Sonar", PowerCategory.Recon,
-            "Renvoie le nombre de cases occupées dans un disque de rayon 4.",
-            3, 2, 3, -1, TargetKind.Cell, 4, false, "sonar"),
+            "Renvoie le nombre de cases occupées dans un disque de rayon 3.",
+            3, 2, 3, -1, TargetKind.Cell, 3, false, "sonar"),
         new(PowerId.TripleSalvo, "Salve triple", PowerCategory.Offense,
             "3 tirs consécutifs alignés.",
             4, 0, 3, -1, TargetKind.Line, null, false, "triple-salvo")

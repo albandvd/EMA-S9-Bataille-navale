@@ -4,13 +4,13 @@ namespace Naval.Shared.Domain.Powers;
 
 /// <summary>
 /// P-01 — docs/02-pouvoirs.md §3. Révèle le NOMBRE de cases occupées de la flotte adverse dans
-/// un disque de rayon 4 (distance euclidienne, pas Chebyshev — un futur pouvoir de zone carrée
-/// comme la Frappe orbitale ne doit pas réutiliser ce calcul de distance).
+/// un disque de rayon 3 (distance euclidienne, pas Chebyshev — les bombes, à zone carrée, ne
+/// réutilisent pas ce calcul de distance). Rayon réduit de 4 à 3 pour l'équilibrage.
 /// Ne révèle jamais de position : RevealedCells reste toujours vide.
 /// </summary>
 public sealed class SonarHandler : IPowerHandler
 {
-    private const int RadiusSquared = 16; // rayon 4 au carré
+    private const int RadiusSquared = 9; // rayon 3 au carré, cf. PowerCatalog
 
     public PowerId Id => PowerId.Sonar;
 

@@ -1000,3 +1000,43 @@ joueur, second usage → 409 `POWER_ON_COOLDOWN`. Côté front, le bouton HeavyB
 s'affichent dans la barre de pouvoirs (grisé tant que l'énergie < 10).
 
 **Statut :** `terminé`
+
+## Troisième pouvoir — Tsar Bomba (P-25) et Sonar ramené à rayon 3
+
+**Prompt :** « Sur la même branche ajoute un nouveau pouvoir. Ce pouvoir est la tsar bomba. Il
+coûte 40 et n'est utilisable qu'une fois. La bombe provoque une explosion de 5x5. Réduit aussi la
+portée du sonar de 4 à 3. »
+
+**Décision et justification :**
+
+1. **Base commune `AreaBombHandler` plutôt qu'un second handler copié.** Bombe lourde et Tsar
+   Bomba ne diffèrent que par le rayon, le coût et les charges. Le handler abstrait lit son
+   rayon et son nom dans `PowerCatalog` (seule source de vérité) : `HeavyBombHandler` et
+   `TsarBombaHandler` se réduisent à leur `PowerId`. Un troisième pouvoir de zone carrée ne
+   demandera qu'une entrée de catalogue et une classe de 3 lignes.
+2. **Tsar Bomba : 40 d'énergie, `MaxUses = 1`, cooldown 0, pas de charge.** Valeurs imposées
+   par la demande. Le cooldown ne sert à rien puisque le slot passe `Exhausted` après l'unique
+   usage. Mêmes règles que la Bombe lourde : zone tronquée au bord (9 cases en coin), cases déjà
+   visées sautées, touches sans gain d'énergie, tour consommé. Sans gain d'énergie sur les
+   touches, 40 points représentent la majeure partie d'une partie d'économie : la bombe arrive
+   tard, souvent sur une flotte déjà entamée — c'est ce qui l'empêche de « gagner seule »
+   (règle §4.5).
+3. **Loadout par défaut `[Sonar, HeavyBomb, TsarBomba]`.** Toujours faute de sélection de loadout
+   côté front (E-13) ; on reste dans la limite de 3 pouvoirs.
+4. **Sonar : rayon 4 → 3** (`RadiusSquared` 16 → 9, `Radius: 3` au catalogue, doc et client
+   factice alignés). Disque euclidien inchangé.
+5. **Message des bombes basé sur le nom du catalogue** (« Tsar Bomba en secteur E5 : … ») au lieu
+   du libellé fixe « Bombardement » ; exemple openapi mis à jour.
+
+**Scénario de vérification :**
+- `TsarBombaTests` : nominal (25 tirs, porte-avions coulé, énergie 40 → 0, slot `Exhausted`),
+  refus du second usage (`POWER_EXHAUSTED`, énergie et grille intactes), refus à 39 d'énergie,
+  coin (9 cases).
+- `SonarTests` : nouveau test — navire à distance 3 compté, case à distance 4 ignorée.
+- Tests existants de la Bombe lourde conservés sans modification (vérifient le refactoring).
+
+**Résultat observé :** `dotnet test` → 74/74 verts (69 + 5) ; `dotnet format --verify-no-changes`
+propre. Pas de run réel : atteindre 40 d'énergie en partie demande plusieurs dizaines de tours ;
+le chemin service/endpoint est le même que celui de la Bombe lourde, déjà vérifié en réel.
+
+**Statut :** `terminé`
