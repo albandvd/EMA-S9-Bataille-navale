@@ -12,7 +12,9 @@ Complété par le binôme.
   - Priorité 1 : socle solo S-01 à S-17 (partie, flotte, tirs, IA, forfait).
   - Priorité 2 : polish visuel et sonore (Navcom, sprites, icônes, sons).
   - Priorité 3 : E-A multijoueur (E-01 à E-09 : code, salon public, temps réel, présence, timer, spectateur).
-  - Pouvoirs : côté front seulement, pas d'endpoint API tant que le solo n'était pas jouable.
+  - Priorité 4 : pouvoirs (E-10 à E-16), commencés une fois le solo jouable : Sonar, Bombe lourde
+    (3×3), Tsar Bomba (5×5, usage unique) ; `POST /api/games/{id}/powers` et méthode `UsePower`
+    du hub, handlers `IPowerHandler` dans `Naval.Shared/Domain/Powers`.
   - Hors périmètre : persistance (E-27 non demandée), TLS, CI.
 
 * Organisation du code et contrats :
@@ -56,7 +58,7 @@ Complété par le binôme.
   - Numéros d'ADR : à reporter depuis le dossier des ADR du dépôt.
 
 * Vérifications réalisées et limites connues :
-  - Tests : 37 (socle) → 47 (solo complet) → 69 verts (multijoueur).
+  - Tests : 37 (socle) → 47 (solo complet) → 69 (multijoueur) → 96 verts (pouvoirs).
   - Tests de régression vérifiés rouges avant correctif (`Player2.IsReady`).
   - Bout en bout : `curl` sur API réelle, parcours navigateur Brave, pilotage du DOM.
   - Docker : santé, MIME WASM, fallback SPA et CORS vérifiés.
